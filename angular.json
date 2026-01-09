@@ -2,11 +2,12 @@
   "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
   "version": 1,
   "cli": {
-    "packageManager": "npm"
+    "packageManager": "npm",
+    "analytics": false
   },
   "newProjectRoot": "projects",
   "projects": {
-    "test-angular": {
+    "twilio-messaging": {
       "projectType": "application",
       "schematics": {},
       "root": "",
@@ -56,10 +57,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "test-angular:build:production"
+              "buildTarget": "twilio-messaging:build:production"
             },
             "development": {
-              "buildTarget": "test-angular:build:development"
+              "buildTarget": "twilio-messaging:build:development"
             }
           },
           "defaultConfiguration": "development"

@@ -2,9 +2,14 @@
 
 # Compiled output
 /dist
+/release
 /tmp
 /out-tsc
 /bazel-out
+
+server/index.js
+
+src/environments
 
 # Node
 /node_modules

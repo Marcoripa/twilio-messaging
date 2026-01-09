@@ -1,0 +1,115 @@
+<div class="flex h-screen bg-gray-100">
+  <!-- Sidebar -->
+  <aside
+    class="w-full md:w-95 bg-white border-r border-gray-300 flex flex-col"
+    [ngClass]="{
+      flex: !selectedContact,
+      hidden: selectedContact,
+      'md:flex': true
+    }"
+  >
+    <!-- Search Bar -->
+    <div class="p-4 border-b border-gray-200">
+      <div class="flex items-center bg-gray-100 rounded-lg px-3 py-2">
+        <span class="text-gray-500 text-lg mr-2">&#128269;</span>
+        <input
+          #s
+          type="text"
+          placeholder="Search for contact"
+          (input)="search(s.value)"
+          [value]="searchTerm"
+          class="w-full bg-transparent outline-none text-gray-800"
+        />
+      </div>
+    </div>
+
+    <!-- Contact List -->
+    <div class="flex-1 overflow-y-auto">
+      <div
+        *ngFor="let contact of filteredContacts; trackBy: trackByPhone"
+        class="flex items-center p-3 cursor-pointer hover:bg-gray-100"
+        [ngClass]="{ 'bg-blue-100': contact.is_selected }"
+        (click)="onContactSelect(contact)"
+      >
+      <img
+          [src]="'https://ui-avatars.com/api/?name=' + (contact.contact?.fields?.Name ?? 'New Contact')"
+          class="w-12 h-12 rounded-full object-cover mr-3"
+      />
+        <div class="flex-1 overflow-hidden">
+          <div class="flex justify-between items-start">
+            <div class="font-medium text-gray-800 truncate">
+                {{ getContactLabel(contact) }}
+            </div>
+            <div class="text-xs text-gray-500 ml-2 flex-shrink-0">
+              <span>{{ calculateTimeDifference(contact.last_message.date_created) }}</span>
+            </div>
+          </div>
+          <p class="text-sm text-gray-500 truncate">{{ contact.phone }}</p>
+          <p class="text-sm text-gray-600 truncate">{{ contact.last_message.body }}</p>
+        </div>
+        
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Chat -->
+  <main
+    class="flex-1 flex flex-col h-screen overflow-hidden"
+    [ngClass]="{
+      hidden: !selectedContact,
+      flex: selectedContact,
+      'md:flex': true
+    }"
+  >
+    @if (selectedContact) {
+    <div class="flex-1 flex flex-col min-h-0">
+      <h3 class="p-4 border-b border-gray-200 font-semibold text-gray-800 flex items-center">
+        <!-- Back button visible only on small screens -->
+        <button
+          class="md:hidden mr-3 text-blue-500 font-bold"
+          (click)="selectedContact = undefined"
+        >
+          ←
+        </button>
+
+        Chat with {{ getContactLabel(selectedContact) }}
+      </h3>
+
+      <!-- Messages -->
+      <div class="flex-1 min-h-0 p-4 overflow-y-auto space-y-3 flex flex-col messages">
+        @for (msg of selectedContact.messages; track msg) {
+        <div
+          [ngClass]="{
+            'self-end bg-green-200 text-black rounded-tr-none': msg.from === twilioPhone,
+            'self-start bg-white text-gray-800 rounded-tl-none': msg.from !== twilioPhone
+          }"
+          class="max-w-xs rounded-xl px-4 py-2 break-words"
+        >
+          <div class="text-sm">{{ msg.body }}</div>
+          <div class="text-xs text-gray-500 mt-1 text-right">
+            {{ msg.date_created.slice(0, 22) || '' }}
+          </div>
+        </div>
+        }
+      </div>
+
+      <!-- Input -->
+      <div class="p-4 border-t border-gray-200 flex-shrink-0">
+        <input
+          type="text"
+          placeholder="Type a message"
+          [(ngModel)]="newMessage"
+          (keyup.enter)="sendMessage()"
+          class="w-full border border-gray-300 rounded-full px-4 py-2 outline-none focus:ring-2 focus:ring-blue-400"
+        />
+      </div>
+    </div>
+    } @else {
+    <div class="flex-1 flex items-center justify-center">
+      <h3 class="text-gray-500 text-lg font-medium text-center">
+        Select a contact to start messaging
+      </h3>
+    </div>
+    }
+  </main>
+</div>

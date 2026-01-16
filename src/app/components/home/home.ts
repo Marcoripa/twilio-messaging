@@ -20,6 +20,7 @@ export class Home {
   selectedContact?: Contact;
   newMessage = '';
   twilioPhone = environment.twilioPhone;
+  isModalOpen = false;
 
   constructor(
     private contactService: ContactService,
@@ -38,16 +39,14 @@ export class Home {
 
   refreshData() {
     this.contactService.getAll().subscribe((serverContacts) => {
-      // Replace arrays to trigger change detection
       this.contacts = [...serverContacts];
       this.filteredContacts = [...serverContacts];
 
       // Preserve selected contact
-      if (this.selectedContact) {
-        this.selectedContact = this.contacts.find(
-          (c) => c.phone === this.selectedContact?.phone
-        );
-      }
+      /* if (this.selectedContact) {
+        this.selectedContact = this.contacts.find((c) => c.phone === this.selectedContact?.phone);
+        console.log(this.selectedContact)
+      } */
 
       // Force Angular to detect changes
       this.cd.detectChanges();
@@ -93,8 +92,9 @@ export class Home {
     }, 0);
   }
 
-  calculateTimeDifference(date_created: string): string {
-    if (!date_created) return '';
+  calculateTimeDifference(contact: Contact): string {
+    if (!contact.last_message) return '';
+    const date_created = contact.last_message.date_created;
 
     const past = new Date(date_created);
     const now = new Date();
@@ -114,6 +114,11 @@ export class Home {
     }
 
     return 'just now';
+  }
+
+  lastMessageBody(contact: Contact): string {
+    if (!contact.last_message) return '';
+    return contact.last_message.body;
   }
 
   sendMessage() {
@@ -136,9 +141,8 @@ export class Home {
 
     this.http.post(`${environment.apiUrl}/api/send_sms`, payload).subscribe({
       next: (res) => console.log('SMS sent:', res),
-      error: (err) => console.error('Error sending SMS:', err)
+      error: (err) => console.error('Error sending SMS:', err),
     });
-   
 
     this.newMessage = '';
     this.refreshData();
@@ -148,5 +152,34 @@ export class Home {
       const container = document.querySelector('.messages');
       if (container) container.scrollTop = container.scrollHeight;
     }, 0);
+  }
+
+  handleNewTextModal(isOpen: boolean) {
+    this.isModalOpen = isOpen;
+  }
+
+  goToChat(contactData: any) {
+    const tempContact = {
+      phone: contactData.phone,
+      contact: {
+        id: 'temp_contact_id',
+        createdTime: new Date().toISOString(),
+        fields: {
+          Name: contactData.name,
+          Phone: contactData.phone
+        }
+      },
+      messages: [],
+      last_message: null,
+      is_selected: true,
+    };
+
+    if (contactData.save) {
+      console.log('Saving contact')
+      //call airtable api
+    }
+
+    this.onContactSelect(tempContact);
+    this.handleNewTextModal(false);
   }
 }

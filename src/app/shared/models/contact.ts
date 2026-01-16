@@ -19,7 +19,7 @@ export interface Contact {
     to: string;
     body: string;
     date_created: string;
-  };
+  } | null;
 
   messages: {
     from: string;

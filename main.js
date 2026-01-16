@@ -1,5 +1,9 @@
 const { app, BrowserWindow, ipcMain  } = require('electron');
 const path = require('path');
+const dotenv = require('dotenv');
+
+dotenv.config();
+const PORT = process.env.PORT;
 
 const expressApp = require('./server/index'); 
 
@@ -39,7 +43,6 @@ function createWindow() {
 
 
 app.on('ready', () => {
-  const PORT = 3001;
   expressApp.listen(PORT, () => {
     console.log(`Express server running on http://localhost:${PORT}`);
   });

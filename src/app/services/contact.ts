@@ -12,7 +12,6 @@ export class ContactService {
   private readonly API_URL = `${environment.apiUrl}/api/conversations`;
 
   getAll(): Observable<Contact[]> {
-    console.log(`CALLING  ${this.API_URL}`)
     return this.http.get<Contact[]>(this.API_URL);
   }
 }

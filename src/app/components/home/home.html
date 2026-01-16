@@ -20,6 +20,27 @@
           [value]="searchTerm"
           class="w-full bg-transparent outline-none text-gray-800"
         />
+
+        <button
+          (click)="handleNewTextModal(true)"
+          class="cursor-pointer w-6 h-6 flex items-center justify-center rounded-full bg-blue-500 hover:bg-blue-600 text-white text-2xl shadow-md hover:shadow-lg transition-all duration-200"
+          title="New Text"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 4v16m8-8H4"
+            />
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -30,24 +51,26 @@
         class="flex items-center p-3 cursor-pointer hover:bg-gray-100"
         [ngClass]="{ 'bg-blue-100': contact.is_selected }"
         (click)="onContactSelect(contact)"
+        [title]="getContactLabel(contact)"
       >
-      <img
-          [src]="'https://ui-avatars.com/api/?name=' + (contact.contact?.fields?.Name ?? 'New Contact')"
+        <img
+          [src]="
+            'https://ui-avatars.com/api/?name=' + (contact.contact?.fields?.Name ?? 'New Contact')
+          "
           class="w-12 h-12 rounded-full object-cover mr-3"
-      />
+        />
         <div class="flex-1 overflow-hidden">
           <div class="flex justify-between items-start">
             <div class="font-medium text-gray-800 truncate">
-                {{ getContactLabel(contact) }}
+              {{ getContactLabel(contact) }}
             </div>
             <div class="text-xs text-gray-500 ml-2 flex-shrink-0">
-              <span>{{ calculateTimeDifference(contact.last_message.date_created) }}</span>
+              <span>{{ calculateTimeDifference(contact) }}</span>
             </div>
           </div>
           <p class="text-sm text-gray-500 truncate">{{ contact.phone }}</p>
-          <p class="text-sm text-gray-600 truncate">{{ contact.last_message.body }}</p>
+          <p class="text-sm text-gray-600 truncate">{{ lastMessageBody(contact) }}</p>
         </div>
-        
       </div>
     </div>
   </aside>
@@ -112,4 +135,47 @@
     </div>
     }
   </main>
+
+  <!-- Modal -->
+  <div
+    *ngIf="isModalOpen"
+    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+  >
+    <div class="bg-white rounded-lg p-6 w-96">
+      <h2 class="text-xl font-semibold mb-4">Who are you reaching out today?</h2>
+
+      <div class="flex items-center mb-4">
+        <span class="mr-3 text-gray-700">Just send text</span>
+        <label class="relative inline-flex items-center cursor-pointer">
+          <input type="checkbox" class="sr-only peer" #save/>
+          <div
+            class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:bg-blue-500 transition-all duration-200"
+          ></div>
+          <div
+            class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-md transform transition-all duration-200 peer-checked:translate-x-5"
+          ></div>
+        </label>
+        <span class="ml-3 text-gray-700">Save contact</span>
+      </div>
+
+      <input type="text" placeholder="Phone" #phone class="w-full mb-3 p-2 border rounded" />
+
+      <input type="text" placeholder="Contact name" #name class="w-full mb-3 p-2 border rounded" />
+
+      <div class="flex justify-end space-x-2">
+        <button
+          (click)="handleNewTextModal(false)"
+          class="cursor-pointer px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+        >
+          Never mind
+        </button>
+        <button
+          (click)="goToChat({ name: name.value, phone: phone.value, save: save.checked  })"
+          class="cursor-pointer px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+        >
+          Let's chat
+        </button>
+      </div>
+    </div>
+  </div>
 </div>

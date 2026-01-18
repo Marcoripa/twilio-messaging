@@ -5,7 +5,7 @@
     [ngClass]="{
       flex: !selectedContact,
       hidden: selectedContact,
-      'md:flex': true
+      'md:flex': true,
     }"
   >
     <!-- Search Bar -->
@@ -81,73 +81,92 @@
     [ngClass]="{
       hidden: !selectedContact,
       flex: selectedContact,
-      'md:flex': true
+      'md:flex': true,
     }"
   >
     @if (selectedContact) {
-    <div class="flex-1 flex flex-col min-h-0">
-      <h3 class="p-4 border-b border-gray-200 font-semibold text-gray-800 flex items-center">
-        <!-- Back button visible only on small screens -->
-        <button
-          class="md:hidden mr-3 text-blue-500 font-bold"
-          (click)="selectedContact = undefined"
-        >
-          ←
-        </button>
+      <div class="flex-1 flex flex-col min-h-0">
+        <h3 class="p-4 border-b border-gray-200 font-semibold text-gray-800 flex items-center">
+          <!-- Back button visible only on small screens -->
+          <button
+            class="md:hidden mr-3 text-blue-500 font-bold"
+            (click)="selectedContact = undefined"
+          >
+            ←
+          </button>
 
-        Chat with {{ getContactLabel(selectedContact) }}
-      </h3>
+          Chat with {{ getContactLabel(selectedContact) }}
 
-      <!-- Messages -->
-      <div class="flex-1 min-h-0 p-4 overflow-y-auto space-y-3 flex flex-col messages">
-        @for (msg of selectedContact.messages; track msg) {
-        <div
-          [ngClass]="{
-            'self-end bg-green-200 text-black rounded-tr-none': msg.from === twilioPhone,
-            'self-start bg-white text-gray-800 rounded-tl-none': msg.from !== twilioPhone
-          }"
-          class="max-w-xs rounded-xl px-4 py-2 break-words"
-        >
-          <div class="text-sm">{{ msg.body }}</div>
-          <div class="text-xs text-gray-500 mt-1 text-right">
-            {{ msg.date_created.slice(0, 22) || '' }}
-          </div>
+          <button
+            class="cursor-pointer ml-auto p-2 text-gray-500 bg-blue-100 hover:text-blue-800 transition-colors rounded-lg"
+            (click)="handlePhoneCallModal(true)"
+            title="Call contact"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
+              ></path>
+            </svg>
+          </button>
+        </h3>
+
+        <!-- Messages -->
+        <div class="flex-1 min-h-0 p-4 overflow-y-auto space-y-3 flex flex-col messages">
+          @for (msg of selectedContact.messages; track msg) {
+            <div
+              [ngClass]="{
+                'self-end bg-green-200 text-black rounded-tr-none': msg.from === twilioPhone,
+                'self-start bg-white text-gray-800 rounded-tl-none': msg.from !== twilioPhone,
+              }"
+              class="max-w-xs rounded-xl px-4 py-2 break-words"
+            >
+              <div class="text-sm">{{ msg.body }}</div>
+              <div class="text-xs text-gray-500 mt-1 text-right">
+                {{ msg.date_created.slice(0, 22) || '' }}
+              </div>
+            </div>
+          }
         </div>
-        }
-      </div>
 
-      <!-- Input -->
-      <div class="p-4 border-t border-gray-200 flex-shrink-0">
-        <input
-          type="text"
-          placeholder="Type a message"
-          [(ngModel)]="newMessage"
-          (keyup.enter)="sendMessage()"
-          class="w-full border border-gray-300 rounded-full px-4 py-2 outline-none focus:ring-2 focus:ring-blue-400"
-        />
+        <!-- Input -->
+        <div class="p-4 border-t border-gray-200 flex-shrink-0">
+          <input
+            type="text"
+            placeholder="Type a message"
+            [(ngModel)]="newMessage"
+            (keyup.enter)="sendMessage()"
+            class="w-full border border-gray-300 rounded-full px-4 py-2 outline-none focus:ring-2 focus:ring-blue-400"
+          />
+        </div>
       </div>
-    </div>
     } @else {
-    <div class="flex-1 flex items-center justify-center">
-      <h3 class="text-gray-500 text-lg font-medium text-center">
-        Select a contact to start messaging
-      </h3>
-    </div>
+      <div class="flex-1 flex items-center justify-center">
+        <h3 class="text-gray-500 text-lg font-medium text-center">
+          Select a contact to start messaging
+        </h3>
+      </div>
     }
   </main>
 
   <!-- Modal -->
-  <div
-    *ngIf="isModalOpen"
-    class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-  >
-    <div class="bg-white rounded-lg p-6 w-96">
-      <h2 class="text-xl font-semibold mb-4">Who are you reaching out today?</h2>
+  <div *ngIf="isModalOpen" class="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg p-6 w-96 mx-2">
+      <h2 class="text-xl font-semibold mb-4 text-center">Who are you reaching out today?</h2>
 
-      <div class="flex items-center mb-4">
+      <div class="flex items-center mb-4 justify-center">
         <span class="mr-3 text-gray-700">Just send text</span>
         <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" class="sr-only peer" #save/>
+          <input type="checkbox" class="sr-only peer" #save />
           <div
             class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:bg-blue-500 transition-all duration-200"
           ></div>
@@ -170,11 +189,71 @@
           Never mind
         </button>
         <button
-          (click)="goToChat({ name: name.value, phone: phone.value, save: save.checked  })"
+          (click)="goToChat({ name: name.value, phone: phone.value, save: save.checked })"
           class="cursor-pointer px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
         >
           Let's chat
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phone call Modal -->
+  <div
+    *ngIf="isPhoneCallModalOpen"
+    class="fixed inset-0 bg-black/75 flex items-center justify-center z-50"
+  >
+    <div
+      class="relative max-w-md w-full bg-slate-800 rounded-3xl shadow-2xl p-8 border border-slate-700 mx-2"
+    >
+      <button
+        (click)="handlePhoneCallModal(false)"
+        class="absolute top-5 right-5 text-slate-400 hover:text-white transition-colors"
+        aria-label="Close modal"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+
+      <div class="text-center mb-8">
+        <h1 class="text-2xl font-bold text-indigo-400">Twilio Web Call</h1>
+      </div>
+
+      <div
+        id="status"
+        class="mb-6 p-3 rounded-lg bg-slate-700 text-center text-xs font-mono uppercase tracking-widest text-yellow-500"
+      >
+        {{twilioCallStatus}}
+      </div>
+
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-4">
+          <button
+            id="button-call"
+            class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+          >
+            Call
+          </button>
+          <button
+            id="button-hangup"
+            disabled
+            class="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+          >
+            Hangup
+          </button>
+        </div>
       </div>
     </div>
   </div>

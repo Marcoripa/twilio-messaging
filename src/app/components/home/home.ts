@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Contact } from '../../shared/models/contact';
 import { ContactService } from '../../services/contact';
+import { Device } from '@twilio/voice-sdk';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -21,6 +22,9 @@ export class Home {
   newMessage = '';
   twilioPhone = environment.twilioPhone;
   isModalOpen = false;
+  isPhoneCallModalOpen = false;
+  device: Device | undefined;
+  twilioCallStatus = ''
 
   constructor(
     private contactService: ContactService,
@@ -40,8 +44,10 @@ export class Home {
   refreshData() {
     this.contactService.getAll().subscribe((serverContacts) => {
       this.contacts = [...serverContacts];
-      this.filteredContacts = [...serverContacts];
-
+      if (this.filteredContacts.length === 0) {
+        this.filteredContacts = [...serverContacts];
+      }
+      
       // Preserve selected contact
       /* if (this.selectedContact) {
         this.selectedContact = this.contacts.find((c) => c.phone === this.selectedContact?.phone);
@@ -158,7 +164,7 @@ export class Home {
     this.isModalOpen = isOpen;
   }
 
-  goToChat(contactData: any) {
+  async goToChat(contactData: any) {
     const tempContact = {
       phone: contactData.phone,
       contact: {
@@ -175,11 +181,68 @@ export class Home {
     };
 
     if (contactData.save) {
-      console.log('Saving contact')
-      //call airtable api
+      //TODO: check the contact is not listed yet
+      const res = await fetch(`${environment.airtableApi}/${environment.airtableBaseId}/${environment.airtableTableId}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${environment.airtableToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          "records": [
+            {
+              "fields": {
+                "Name": contactData.name,
+                "Shoot Date": "",
+                "Phone": contactData.phone,
+                "Email": ""
+              }
+            }
+          ]
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Airtable error: ${res.statusText}`);
+      }
     }
 
     this.onContactSelect(tempContact);
     this.handleNewTextModal(false);
+  }
+
+  handlePhoneCallModal(isOpen: boolean) {
+    this.isPhoneCallModalOpen = isOpen;
+    if (isOpen) {
+      this.setupDevice();
+    }
+  }
+
+  async setupDevice() {
+    this.twilioCallStatus = 'Loading configuration...'
+
+    try {
+      const response = await fetch(`${environment.apiUrl}/api/token`);
+      const data = await response.json();
+
+      this.device = new Device(data.token, {
+        logLevel: 1,
+        edge: 'frankfurt'
+      });
+
+      this.device.on("registered", () => {
+        this.twilioCallStatus = "Ready to call!";
+      });
+
+      this.device.on("error", error => {
+        this.twilioCallStatus = "Error: " + error.message;
+        console.error("Twilio Device Error:", error);
+      });
+
+      this.device.register();
+    } catch (err) {
+      this.twilioCallStatus = "Setup Error";
+      console.error("Setup error:", err);
+    }
   }
 }

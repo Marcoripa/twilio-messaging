@@ -1,10 +1,13 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const twilio = require('twilio')
+
+const { AccessToken } = twilio.jwt;
+const { VoiceGrant } = AccessToken;
+const { twiml: { VoiceResponse } } = twilio;
 
 dotenv.config({ path: '../.env' });
-const app = express();
-
 const PRODUCTION = process.env.PRODUCTION;
 const PORT = process.env.PORT;
 const airtableBaseId = process.env.AIRTABLE_BASE_ID;
@@ -14,11 +17,12 @@ const airtableApi = process.env.AIRTABLE_API;
 const twilioAccountId = process.env.TWILIO_ACCOUNT_ID;
 const twilioPhone = process.env.TWILIO_PHONE;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-/* const twilioApiKey = process.env.AIRTABLE_BASE_ID
-const twilioApiSecret = process.env.AIRTABLE_BASE_ID
-const twilioAppSid = process.env.AIRTABLE_BASE_ID */
+const twilioApiKey = process.env.TWILIO_API_KEY
+const twilioApiSecret = process.env.TWILIO_API_SECRET
+const twilioAppSid = process.env.TWILIO_APP_SID
 const basicAuth = btoa(`${twilioAccountId}:${twilioAuthToken}`);
 
+const app = express();
 app.use(cors());
 app.use(express.json());
 
@@ -125,6 +129,34 @@ async function fetchAirtableContacts() {
   return Object.fromEntries(data.records.map((r) => [r.fields.Phone, r]));
 }
 
+
+app.get('/api/token', (req, res) => {
+  const identity = 'browser_user';
+  const token = new AccessToken(
+    twilioAccountId,
+    twilioApiKey,
+    twilioApiSecret,
+    { identity }
+  );
+
+  const voiceGrant = new VoiceGrant({
+    outgoingApplicationSid: twilioAppSid,
+    incomingAllow: true
+  });
+
+  token.addGrant(voiceGrant);
+  res.json({ token: token.toJwt() });
+});
+
+// TwiML endpoint
+app.post('/api/voice', (req, res) => {
+  const to = req.body.To;
+  const response = new VoiceResponse();
+  response.dial({ callerId: twilioPhone }, to);
+  res.type('text/xml');
+  res.send(response.toString());
+});
+
 app.get('/api/conversations', async (req, res) => {
   try {
     const [messages, airtableContacts] = await Promise.all([
@@ -134,19 +166,6 @@ app.get('/api/conversations', async (req, res) => {
 
     const groupedMessages = groupMessagesByContact(messages);
 
-    /* const conversations = Object.entries(grouped).map(([phone, msgs]) => {
-      const lastMessage = msgs.at(-1);
-
-      return {
-        phone,
-        contact: airtableContacts[phone] || null, // null = not registered
-        messages: msgs,
-        last_message: lastMessage,
-        lastMessageTimestamp: new Date(lastMessage.date_created).getTime(),
-        is_registered: Boolean(airtableContacts[phone]),
-        is_selected: false,
-      };
-    }); */
     const conversations = Object.entries(airtableContacts).map(
       ([phone, contact]) => {
         const msgs = groupedMessages[phone] || [];

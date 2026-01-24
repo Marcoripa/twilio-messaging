@@ -4,8 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Contact } from '../../shared/models/contact';
 import { ContactService } from '../../services/contact';
-import { Device } from '@twilio/voice-sdk';
-import { environment } from '../../../environments/environment';
+import { Device, Call } from '@twilio/voice-sdk';
+import { environment } from '../../../environment';
 
 @Component({
   selector: 'app-home',
@@ -20,16 +20,17 @@ export class Home {
   searchTerm: string = '';
   selectedContact?: Contact;
   newMessage = '';
-  twilioPhone = environment.twilioPhone;
+  twilioPhone = environment.twilio_Phone;
   isModalOpen = false;
   isPhoneCallModalOpen = false;
   device: Device | undefined;
-  twilioCallStatus = ''
+  twilioCallStatus = '';
+  activeCall: Call | null = null;
 
   constructor(
     private contactService: ContactService,
     private http: HttpClient,
-    private cd: ChangeDetectorRef
+    private cd: ChangeDetectorRef,
   ) {}
 
   ngOnInit() {
@@ -47,12 +48,6 @@ export class Home {
       if (this.filteredContacts.length === 0) {
         this.filteredContacts = [...serverContacts];
       }
-      
-      // Preserve selected contact
-      /* if (this.selectedContact) {
-        this.selectedContact = this.contacts.find((c) => c.phone === this.selectedContact?.phone);
-        console.log(this.selectedContact)
-      } */
 
       // Force Angular to detect changes
       this.cd.detectChanges();
@@ -145,7 +140,7 @@ export class Home {
       },
     ];
 
-    this.http.post(`${environment.apiUrl}/api/send_sms`, payload).subscribe({
+    this.http.post(`${environment.apiUrl}/send_sms`, payload).subscribe({
       next: (res) => console.log('SMS sent:', res),
       error: (err) => console.error('Error sending SMS:', err),
     });
@@ -172,8 +167,8 @@ export class Home {
         createdTime: new Date().toISOString(),
         fields: {
           Name: contactData.name,
-          Phone: contactData.phone
-        }
+          Phone: contactData.phone,
+        },
       },
       messages: [],
       last_message: null,
@@ -181,30 +176,15 @@ export class Home {
     };
 
     if (contactData.save) {
-      //TODO: check the contact is not listed yet
-      const res = await fetch(`${environment.airtableApi}/${environment.airtableBaseId}/${environment.airtableTableId}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${environment.airtableToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          "records": [
-            {
-              "fields": {
-                "Name": contactData.name,
-                "Shoot Date": "",
-                "Phone": contactData.phone,
-                "Email": ""
-              }
-            }
-          ]
-        })
-      });
+      const payload = {
+        name: contactData.name,
+        phone: contactData.phone
+      };
 
-      if (!res.ok) {
-        throw new Error(`Airtable error: ${res.statusText}`);
-      }
+      this.http.post(`${environment.apiUrl}/save_contact`, payload).subscribe({
+        next: (res) => console.log('Contact saved:', res),
+        error: (err) => console.error('Error saving contact:', err),
+      });
     }
 
     this.onContactSelect(tempContact);
@@ -219,30 +199,79 @@ export class Home {
   }
 
   async setupDevice() {
-    this.twilioCallStatus = 'Loading configuration...'
+    this.twilioCallStatus = 'Loading configuration...';
 
     try {
-      const response = await fetch(`${environment.apiUrl}/api/token`);
+      const response = await fetch(`${environment.apiUrl}/token`);
       const data = await response.json();
 
       this.device = new Device(data.token, {
         logLevel: 1,
-        edge: 'frankfurt'
+        edge: 'frankfurt',
       });
 
-      this.device.on("registered", () => {
-        this.twilioCallStatus = "Ready to call!";
+      this.device.on('registered', () => {
+        this.twilioCallStatus = 'Ready to call!';
       });
 
-      this.device.on("error", error => {
-        this.twilioCallStatus = "Error: " + error.message;
-        console.error("Twilio Device Error:", error);
+      this.device.on('error', (error) => {
+        this.twilioCallStatus = 'Error: ' + error.message;
+        console.error('Twilio Device Error:', error);
       });
 
       this.device.register();
     } catch (err) {
-      this.twilioCallStatus = "Setup Error";
-      console.error("Setup error:", err);
+      this.twilioCallStatus = 'Setup Error';
+      console.error('Setup error:', err);
+    }
+  }
+
+  async startCall() {
+    let toPhoneNumber = this.selectedContact?.phone;
+    console.log(toPhoneNumber);
+    if (!toPhoneNumber) {
+      this.twilioCallStatus = 'Invalid phone number';
+      return;
+    }
+
+    if (this.device) {
+      this.twilioCallStatus = `Calling ${toPhoneNumber}`;
+      const params: Record<string, string> = {
+        To: toPhoneNumber,
+      };
+
+      try {
+        const call = await this.device.connect({ params });
+        this.activeCall = call;
+
+        this.twilioCallStatus = 'Calling...';
+
+        call.on('accept', () => {
+          this.twilioCallStatus = 'In Progress';
+        });
+
+        call.on('disconnect', () => {
+          this.twilioCallStatus = 'Call ended';
+          this.activeCall = null;
+        });
+
+        call.on('reject', () => {
+          this.twilioCallStatus = 'Call rejected';
+          this.activeCall = null;
+        });
+      } catch (err) {
+        console.error('Could not connect call:', err);
+        this.twilioCallStatus = 'Call failed';
+      }
+    } else {
+      this.twilioCallStatus = 'Device not initialized';
+    }
+  }
+
+  hangUp() {
+    if (this.activeCall) {
+      this.activeCall.disconnect();
+      this.activeCall = null;
     }
   }
 }

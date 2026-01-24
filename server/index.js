@@ -1,11 +1,16 @@
+const functions = require('firebase-functions');
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const twilio = require('twilio')
+const twilio = require('twilio');
+const querystring = require('querystring');
+const https = require('https')
 
 const { AccessToken } = twilio.jwt;
 const { VoiceGrant } = AccessToken;
-const { twiml: { VoiceResponse } } = twilio;
+const {
+  twiml: { VoiceResponse },
+} = twilio;
 
 dotenv.config({ path: '../.env' });
 const PRODUCTION = process.env.PRODUCTION;
@@ -13,58 +18,19 @@ const PORT = process.env.PORT;
 const airtableBaseId = process.env.AIRTABLE_BASE_ID;
 const airtableTableId = process.env.AIRTABLE_TABLE_ID;
 const airtableToken = process.env.AIRTABLE_TOKEN;
-const airtableApi = process.env.AIRTABLE_API;
 const twilioAccountId = process.env.TWILIO_ACCOUNT_ID;
 const twilioPhone = process.env.TWILIO_PHONE;
 const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN;
-const twilioApiKey = process.env.TWILIO_API_KEY
-const twilioApiSecret = process.env.TWILIO_API_SECRET
-const twilioAppSid = process.env.TWILIO_APP_SID
+const twilioApiKey = process.env.TWILIO_API_KEY;
+const twilioApiSecret = process.env.TWILIO_API_SECRET;
+const twilioAppSid = process.env.TWILIO_APP_SID;
 const basicAuth = btoa(`${twilioAccountId}:${twilioAuthToken}`);
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 
-app.post('/api/send_sms', (req, res) => {
-  const { to, text } = req.body;
-
-  const postData = querystring.stringify({
-    From: twilioPhone,
-    To: to,
-    Body: text,
-  });
-
-  const options = {
-    hostname: 'api.twilio.com',
-    path: `/2010-04-01/Accounts/${twilioAccountId}/Messages.json`,
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Authorization: `Basic ${basicAuth}`,
-      'Content-Length': Buffer.byteLength(postData),
-    },
-  };
-
-  const request = https.request(options, (response) => {
-    let data = '';
-
-    response.on('data', (chunk) => {
-      data += chunk;
-    });
-
-    response.on('end', () => {
-      console.log('Twilio response:', data);
-    });
-  });
-
-  request.on('error', (err) => {
-    console.error('Request error:', err);
-  });
-
-  request.write(postData);
-  request.end();
-});
 
 async function fetchAllTwilioMessages() {
   const requestOptions = {
@@ -114,7 +80,7 @@ function groupMessagesByContact(messages) {
 }
 
 async function fetchAirtableContacts() {
-  const res = await fetch(`${airtableApi}/${airtableBaseId}/${airtableTableId}`, {
+  const res = await fetch(`https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}`, {
     headers: {
       Authorization: `Bearer ${airtableToken}`,
     },
@@ -129,19 +95,13 @@ async function fetchAirtableContacts() {
   return Object.fromEntries(data.records.map((r) => [r.fields.Phone, r]));
 }
 
-
 app.get('/api/token', (req, res) => {
   const identity = 'browser_user';
-  const token = new AccessToken(
-    twilioAccountId,
-    twilioApiKey,
-    twilioApiSecret,
-    { identity }
-  );
+  const token = new AccessToken(twilioAccountId, twilioApiKey, twilioApiSecret, { identity });
 
   const voiceGrant = new VoiceGrant({
     outgoingApplicationSid: twilioAppSid,
-    incomingAllow: true
+    incomingAllow: true,
   });
 
   token.addGrant(voiceGrant);
@@ -166,24 +126,20 @@ app.get('/api/conversations', async (req, res) => {
 
     const groupedMessages = groupMessagesByContact(messages);
 
-    const conversations = Object.entries(airtableContacts).map(
-      ([phone, contact]) => {
-        const msgs = groupedMessages[phone] || [];
-        const lastMessage = msgs.at(-1) || null;
+    const conversations = Object.entries(airtableContacts).map(([phone, contact]) => {
+      const msgs = groupedMessages[phone] || [];
+      const lastMessage = msgs.at(-1) || null;
 
-        return {
-          phone,
-          contact,
-          messages: msgs,
-          last_message: lastMessage,
-          lastMessageTimestamp: lastMessage
-            ? new Date(lastMessage.date_created).getTime()
-            : 0,
-          is_registered: true,
-          is_selected: false,
-        };
-      }
-    );
+      return {
+        phone,
+        contact,
+        messages: msgs,
+        last_message: lastMessage,
+        lastMessageTimestamp: lastMessage ? new Date(lastMessage.date_created).getTime() : 0,
+        is_registered: true,
+        is_selected: false,
+      };
+    });
 
     Object.entries(groupedMessages).forEach(([phone, msgs]) => {
       if (!airtableContacts[phone]) {
@@ -210,8 +166,97 @@ app.get('/api/conversations', async (req, res) => {
   }
 });
 
+app.post('/api/send_sms', (req, res) => {
+  const { to, text } = req.body;
+
+  const postData = querystring.stringify({
+    From: twilioPhone,
+    To: to,
+    Body: text,
+  });
+
+  const options = {
+    hostname: 'api.twilio.com',
+    path: `/2010-04-01/Accounts/${twilioAccountId}/Messages.json`,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Authorization: `Basic ${basicAuth}`,
+      'Content-Length': Buffer.byteLength(postData),
+    },
+  };
+
+  const request = https.request(options, (response) => {
+    let data = '';
+
+    response.on('data', (chunk) => {
+      data += chunk;
+    });
+
+    response.on('end', () => {
+      console.log('Twilio response:', data);
+    });
+  });
+
+  request.on('error', (err) => {
+    console.error('Request error:', err);
+  });
+
+  request.write(postData);
+  request.end();
+});
+
+app.post('/api/save_contact', (req, res) => {
+  //TODO: check the contact is not listed yet
+  const { name, phone } = req.body;
+
+  const postData = JSON.stringify({
+    records: [
+            {
+              fields: {
+                Name: name,
+                'Shoot Date': '',
+                Phone: phone,
+                Email: '',
+              },
+            },
+          ]
+  });
+
+  const options = {
+    hostname: 'api.airtable.com',
+    path: `/v0/${airtableBaseId}/${airtableTableId}`,
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${airtableToken}`,
+    },
+  };
+
+  const request = https.request(options, (response) => {
+    let data = '';
+
+    response.on('data', (chunk) => {
+      data += chunk;
+    });
+
+    response.on('end', () => {
+      console.log('Airtable response:', data);
+    });
+  });
+
+  request.on('error', (err) => {
+    console.error('Request error:', err);
+  });
+
+  request.write(postData);
+  request.end();
+})
+
 if (PRODUCTION == 'desktop') {
   module.exports = app;
+} else if (PRODUCTION == 'firebase') {
+  exports.api = functions.https.onRequest(app);
 } else {
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

@@ -4,6 +4,7 @@ import { Auth, idToken } from '@angular/fire/auth';
 import { switchMap, take } from 'rxjs';
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  console.log('Intercettando chiamata a:', req.url);
   const auth = inject(Auth);
 
   return idToken(auth).pipe(

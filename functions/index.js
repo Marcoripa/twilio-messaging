@@ -28,13 +28,21 @@ app.use(cors({ origin: true }));
 app.use(express.json());
 
 const validateToken = async (req, res, next) => {
-  const idToken = req.headers.authorization?.split('Bearer ')[1];
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log("Blocking: No token found in header");
+    return res.status(401).send('Unauthorized: No token');
+  }
+
+  const idToken = authHeader.split('Bearer ')[1];
   try {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     req.user = decodedToken;
     next();
   } catch (error) {
-    res.status(403).send('Unauthorized');
+    console.error("Blocking: Token invalid", error.message);
+    return res.status(403).send('Unauthorized: Bad token');
   }
 };
 
@@ -73,7 +81,7 @@ function groupMessagesByContact(messages) {
   return conversations;
 }
 
-// --- Proteced Routes ---
+// --- Proteced Routes --- 
 
 app.get('/api/conversations', validateToken, async (req, res) => {
   try {
@@ -168,9 +176,7 @@ app.post('/api/send_sms', validateToken, async (req, res) => {
   }
 });
 
-// -- Public Routes --
-
-app.get('/api/token', (req, res) => {
+app.get('/api/token', validateToken, (req, res) => {
   const identity = 'browser_user';
   const token = new AccessToken(
     TWILIO_ACCOUNT_ID.value(), 
@@ -187,6 +193,8 @@ app.get('/api/token', (req, res) => {
   token.addGrant(voiceGrant);
   res.json({ token: token.toJwt() });
 });
+
+// -- Public Routes --
 
 app.post('/api/voice', (req, res) => {
   const to = req.body.To;

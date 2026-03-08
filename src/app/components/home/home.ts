@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Contact } from '../../shared/models/contact';
 import { ContactService } from '../../services/contact';
+import { TwilioService } from '../../services/twilio';
+import { firstValueFrom } from 'rxjs';
 import { Device, Call } from '@twilio/voice-sdk';
 import { environment } from '../../../environment';
 
@@ -29,6 +31,7 @@ export class Home {
 
   constructor(
     private contactService: ContactService,
+    private twilioService: TwilioService,
     private http: HttpClient,
     private cd: ChangeDetectorRef,
   ) {}
@@ -83,7 +86,7 @@ export class Home {
   }
 
   onContactSelect(contact: Contact) {
-    this.contacts.forEach((c) => (c.is_selected = false));
+    this.filteredContacts.forEach((filteredContact) => (filteredContact.is_selected = false));
     contact.is_selected = true;
     this.selectedContact = contact;
 
@@ -125,10 +128,10 @@ export class Home {
   sendMessage() {
     if (!this.newMessage.trim() || !this.selectedContact) return;
 
-    const payload = {
+    /* const payload = {
       to: this.selectedContact.phone,
       text: this.newMessage.trim(),
-    };
+    }; */
 
     this.selectedContact.messages = [
       ...this.selectedContact.messages,
@@ -140,9 +143,14 @@ export class Home {
       },
     ];
 
-    this.http.post(`${environment.apiUrl}/send_sms`, payload).subscribe({
+    /* this.http.post(`${environment.apiUrl}/send_sms`, payload).subscribe({
       next: (res) => console.log('SMS sent:', res),
       error: (err) => console.error('Error sending SMS:', err),
+    }); */
+
+    this.twilioService.sendSms(this.selectedContact.phone, this.newMessage.trim()).subscribe({
+      next: (res) => console.log('SMS inviato con successo'),
+      error: (err) => console.error('Errore invio:', err)
     });
 
     this.newMessage = '';
@@ -176,12 +184,7 @@ export class Home {
     };
 
     if (contactData.save) {
-      const payload = {
-        name: contactData.name,
-        phone: contactData.phone
-      };
-
-      this.http.post(`${environment.apiUrl}/save_contact`, payload).subscribe({
+      this.contactService.saveContact(contactData.name, contactData.phone).subscribe({
         next: (res) => console.log('Contact saved:', res),
         error: (err) => console.error('Error saving contact:', err),
       });
@@ -202,8 +205,7 @@ export class Home {
     this.twilioCallStatus = 'Loading configuration...';
 
     try {
-      const response = await fetch(`${environment.apiUrl}/token`);
-      const data = await response.json();
+      const data = await firstValueFrom(this.twilioService.getAccessToken());
 
       this.device = new Device(data.token, {
         logLevel: 1,

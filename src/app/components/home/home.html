@@ -86,7 +86,9 @@
   >
     @if (selectedContact) {
       <div class="flex-1 flex flex-col min-h-0">
-        <h3 class="p-4 border-b border-gray-200 font-semibold text-gray-800 flex items-center z-100">
+        <h3
+          class="p-4 border-b border-gray-200 font-semibold text-gray-800 flex items-center z-100"
+        >
           <!-- Back button visible only on small screens -->
           <button
             class="md:hidden mr-3 text-blue-500 font-bold"
@@ -139,7 +141,7 @@
         </div>
 
         <!-- Input -->
-        <div class="p-4 border-t border-gray-200 flex-shrink-0">
+        <div class="p-4 border-t border-gray-200  flex items-center gap-2 flex-shrink-0">
           <input
             type="text"
             placeholder="Type a message"
@@ -147,6 +149,13 @@
             (keyup.enter)="sendMessage()"
             class="w-full border border-gray-300 rounded-full px-4 py-2 outline-none focus:ring-2 focus:ring-blue-400"
           />
+
+          <button
+            (click)="sendMessage()"
+            class="bg-blue-500 text-white px-4 py-2 rounded-full hover:bg-blue-600 active:scale-95"
+          >
+            Send
+          </button>
         </div>
       </div>
     } @else {
@@ -234,7 +243,7 @@
         id="status"
         class="mb-6 p-3 rounded-lg bg-slate-700 text-center text-xs font-mono uppercase tracking-widest text-yellow-500"
       >
-        {{twilioCallStatus}}
+        {{ twilioCallStatus }}
       </div>
 
       <div class="space-y-4">
@@ -247,7 +256,7 @@
             Call
           </button>
           <button
-            (click)="hangUp()" 
+            (click)="hangUp()"
             [disabled]="!activeCall"
             class="bg-rose-600 hover:bg-rose-500 disabled:opacity-50 py-4 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
           >

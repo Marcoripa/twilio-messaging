@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const twilio = require('twilio');
 const querystring = require('querystring');
 const https = require('https')
+const path = require('path')
 
 const { AccessToken } = twilio.jwt;
 const { VoiceGrant } = AccessToken;
@@ -12,7 +13,10 @@ const {
   twiml: { VoiceResponse },
 } = twilio;
 
-dotenv.config({ path: '../.env' });
+dotenv.config({
+  path: path.resolve(__dirname, '../.env')
+});
+
 const PRODUCTION = process.env.PRODUCTION;
 const PORT = process.env.PORT;
 const airtableBaseId = process.env.AIRTABLE_BASE_ID;

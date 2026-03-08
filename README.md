@@ -4,7 +4,7 @@ This project was generated using [Angular CLI](https://github.com/angular/angula
 
 ## Development server
 Before running the show, dont forget to update the environmental variables.
-- For the frontend, update environments.ts
+- For the frontend, update src/environments.ts
 - For the backend, update .env
 
 To start a local development server, run:
@@ -36,4 +36,5 @@ Next, deploy onto firebase with:
 ```bash
 firebase deploy
 ```
+Firebase/Google saves the secrets here: https://console.cloud.google.com/security/secret-manager?project=twilio-messaging-8183c 
 

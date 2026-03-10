@@ -28,25 +28,22 @@ export class Home {
   device: Device | undefined;
   twilioCallStatus = '';
   activeCall: Call | null = null;
+  messages$;
+  unreadCounts$;
 
   constructor(
     private contactService: ContactService,
     private twilioService: TwilioService,
     private http: HttpClient,
     private cd: ChangeDetectorRef,
-  ) {}
-
-  ngOnInit() {
-    this.refreshData();
-
-    // Refresh every 5 seconds
-    setInterval(() => {
-      this.refreshData();
-    }, 5000);
+  ) {
+    this.messages$ = this.twilioService.messages$;
+    this.unreadCounts$ = this.twilioService.unreadCounts$;
   }
 
-  refreshData() {
+  async ngOnInit() {
     this.contactService.getAll().subscribe((serverContacts) => {
+      console.log(serverContacts)
       this.contacts = [...serverContacts];
       if (this.filteredContacts.length === 0) {
         this.filteredContacts = [...serverContacts];
@@ -55,6 +52,36 @@ export class Home {
       // Force Angular to detect changes
       this.cd.detectChanges();
     });
+
+    try {
+      const res = await firstValueFrom(this.twilioService.getAccessToken());
+      await this.twilioService.initialize(res.token);
+
+      // sort contacts after conversations are available
+      await this.sortContactsByConversationActivity();
+      this.twilioService.messageEvents$.subscribe((conversationSid) => {
+        if (!conversationSid) return;
+
+        this.moveContactToTop(conversationSid);
+      });
+
+    } catch (err) {
+      console.error('Twilio initialization failed', err);
+    }
+  }
+
+  moveContactToTop(conversationSid: string) {
+    const index = this.contacts.findIndex(
+      c => c.contact.conversation_sid === conversationSid
+    );
+
+    if (index === -1) return;
+
+    const contact = this.contacts.splice(index, 1)[0];
+    this.contacts.unshift(contact);
+
+    this.filteredContacts = [...this.contacts];
+    this.cd.detectChanges();
   }
 
   search(term: string): void {
@@ -71,6 +98,32 @@ export class Home {
       return phoneMatches || nameMatches;
     });
 
+    this.cd.detectChanges();
+  }
+
+  async sortContactsByConversationActivity() {
+    const conversations = await this.twilioService.getSubscribedConversations();
+
+    const conversationMap = new Map(
+      conversations.map(c => [c.sid, c])
+    );
+
+    this.contacts.sort((a, b) => {
+      const aConv = conversationMap.get(a.contact.conversation_sid);
+      const bConv = conversationMap.get(b.contact.conversation_sid);
+
+      const aTime = aConv?.dateUpdated
+        ? new Date(aConv.dateUpdated).getTime()
+        : 0;
+
+      const bTime = bConv?.dateUpdated
+        ? new Date(bConv.dateUpdated).getTime()
+        : 0;
+
+      return bTime - aTime; // newest first
+    });
+
+    this.filteredContacts = [...this.contacts];
     this.cd.detectChanges();
   }
 
@@ -94,9 +147,19 @@ export class Home {
       const container = document.querySelector('.messages');
       if (container) container.scrollTop = container.scrollHeight;
     }, 0);
+
+    const conversationSid = contact.contact.conversation_sid;
+    if (!conversationSid) {
+      console.warn("No conversation SID for this contact");
+      return;
+    }
+
+    this.twilioService.openConversation(conversationSid);
   }
 
-  calculateTimeDifference(contact: Contact): string {
+
+
+  /* calculateTimeDifference(contact: Contact): string {
     if (!contact.last_message) return '';
     const date_created = contact.last_message.date_created;
 
@@ -118,20 +181,15 @@ export class Home {
     }
 
     return 'just now';
-  }
+  } */
 
-  lastMessageBody(contact: Contact): string {
+  /* lastMessageBody(contact: Contact): string {
     if (!contact.last_message) return '';
     return contact.last_message.body;
-  }
+  } */
 
   sendMessage() {
-    if (!this.newMessage.trim() || !this.selectedContact) return;
-
-    /* const payload = {
-      to: this.selectedContact.phone,
-      text: this.newMessage.trim(),
-    }; */
+    /* if (!this.newMessage.trim() || !this.selectedContact) return;
 
     this.selectedContact.messages = [
       ...this.selectedContact.messages,
@@ -143,24 +201,18 @@ export class Home {
       },
     ];
 
-    /* this.http.post(`${environment.apiUrl}/send_sms`, payload).subscribe({
-      next: (res) => console.log('SMS sent:', res),
-      error: (err) => console.error('Error sending SMS:', err),
-    }); */
-
     this.twilioService.sendSms(this.selectedContact.phone, this.newMessage.trim()).subscribe({
       next: (res) => console.log('SMS inviato con successo'),
       error: (err) => console.error('Errore invio:', err)
     });
 
     this.newMessage = '';
-    this.refreshData();
 
     // Scroll to bottom
     setTimeout(() => {
       const container = document.querySelector('.messages');
       if (container) container.scrollTop = container.scrollHeight;
-    }, 0);
+    }, 0); */
   }
 
   handleNewTextModal(isOpen: boolean) {
@@ -170,16 +222,16 @@ export class Home {
   async goToChat(contactData: any) {
     const tempContact = {
       phone: contactData.phone,
+      conversation_sid: '',
       contact: {
         id: 'temp_contact_id',
+        conversation_sid: '',
         createdTime: new Date().toISOString(),
         fields: {
           Name: contactData.name,
           Phone: contactData.phone,
         },
       },
-      messages: [],
-      last_message: null,
       is_selected: true,
     };
 
@@ -187,6 +239,11 @@ export class Home {
       this.contactService.saveContact(contactData.name, contactData.phone).subscribe({
         next: (res) => console.log('Contact saved:', res),
         error: (err) => console.error('Error saving contact:', err),
+      });
+    } else {
+      this.contactService.startChat(contactData.name, contactData.phone).subscribe({
+        next: (res) => console.log('New chat started:', res),
+        error: (err) => console.error('Error starting new chat:', err),
       });
     }
 

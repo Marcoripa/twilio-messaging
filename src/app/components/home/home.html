@@ -64,12 +64,12 @@
             <div class="font-medium text-gray-800 truncate">
               {{ getContactLabel(contact) }}
             </div>
-            <div class="text-xs text-gray-500 ml-2 flex-shrink-0">
+            <!-- <div class="text-xs text-gray-500 ml-2 flex-shrink-0">
               <span>{{ calculateTimeDifference(contact) }}</span>
-            </div>
+            </div> -->
           </div>
           <p class="text-sm text-gray-500 truncate">{{ contact.phone }}</p>
-          <p class="text-sm text-gray-600 truncate">{{ lastMessageBody(contact) }}</p>
+          <!-- <p class="text-sm text-gray-600 truncate">{{ lastMessageBody(contact) }}</p> -->
         </div>
       </div>
     </div>
@@ -124,20 +124,30 @@
 
         <!-- Messages -->
         <div class="flex-1 min-h-0 p-4 overflow-y-auto space-y-3 flex flex-col messages">
-          @for (msg of selectedContact.messages; track msg) {
+          <div class="flex flex-col gap-2" *ngIf="messages$ | async as messages">
             <div
+              *ngFor="let msg of messages"
+              class="flex"
               [ngClass]="{
-                'self-end bg-green-200 text-black rounded-tr-none': msg.from === twilioPhone,
-                'self-start bg-white text-gray-800 rounded-tl-none': msg.from !== twilioPhone,
+                'justify-end': msg.author === 'system',
+                'justify-start': msg.author !== 'system'
               }"
-              class="max-w-xs rounded-xl px-4 py-2 break-words"
             >
-              <div class="text-sm">{{ msg.body }}</div>
-              <div class="text-xs text-gray-500 mt-1 text-right">
-                {{ msg.date_created.slice(0, 22) || '' }}
+              <div
+                class="max-w-xs rounded-xl px-4 py-2 break-words"
+                [ngClass]="{
+                  'bg-green-200 text-black rounded-tr-none': msg.author === 'system',
+                  'bg-white text-gray-800 rounded-tl-none': msg.author !== 'system'
+                }"
+              >
+                <div class="text-sm">{{ msg.body }}</div>
+
+                <div class="text-xs text-gray-500 mt-1 text-right">
+                  {{ msg.dateCreated | date:'shortTime' }}
+                </div>
               </div>
             </div>
-          }
+          </div>
         </div>
 
         <!-- Input -->

@@ -42,7 +42,32 @@ export class Home {
   }
 
   async ngOnInit() {
-    this.contactService.getAll().subscribe((serverContacts) => {
+    try {
+      // 1. Upload contacts from server and wait for it
+      const serverContacts = await firstValueFrom(this.contactService.getAll());
+      this.contacts = [...serverContacts];
+      this.filteredContacts = [...serverContacts];
+      console.log('Contatti caricati:', this.contacts.length);
+
+      // 2. Get the token and initialize Twilio
+      const res = await firstValueFrom(this.twilioService.getAccessToken());
+      await this.twilioService.initialize(res.token);
+
+      // 3. Sort contacts based on activity
+      await this.sortContactsByConversationActivity();
+
+      // 4. Listen for new messages
+      this.twilioService.messageEvents$.subscribe((conversationSid) => {
+        if (!conversationSid) return;
+        this.moveContactToTop(conversationSid);
+      });
+    } catch (err) {
+      console.error('Inizializzazione fallita:', err);
+    } finally {
+      this.cd.detectChanges();
+    }
+
+    /* this.contactService.getAll().subscribe((serverContacts) => {
       console.log(serverContacts)
       this.contacts = [...serverContacts];
       if (this.filteredContacts.length === 0) {
@@ -67,13 +92,11 @@ export class Home {
 
     } catch (err) {
       console.error('Twilio initialization failed', err);
-    }
+    } */
   }
 
   moveContactToTop(conversationSid: string) {
-    const index = this.contacts.findIndex(
-      c => c.contact.conversation_sid === conversationSid
-    );
+    const index = this.contacts.findIndex((c) => c.contact.conversation_sid === conversationSid);
 
     if (index === -1) return;
 
@@ -102,25 +125,30 @@ export class Home {
   }
 
   async sortContactsByConversationActivity() {
+    console.log('sort');
     const conversations = await this.twilioService.getSubscribedConversations();
 
-    const conversationMap = new Map(
-      conversations.map(c => [c.sid, c])
-    );
+    const conversationMap = new Map(conversations.map((c) => [c.sid, c]));
 
+    this.contacts = this.contacts.map((contactObj) => {
+      const conv = conversationMap.get(contactObj.contact.conversation_sid);
+
+      const lastIndex = conv?.lastMessage?.index ?? 0;
+      const lastReadIndex = conv?.lastReadMessageIndex ?? 0;
+      const hasUnread = lastIndex > lastReadIndex;
+
+      return {
+        ...contactObj,
+        lastActivity: conv?.dateUpdated || null,
+        hasUnread: hasUnread,
+      };
+    });
+
+    // 2. Ordiniamo i contatti usando la nuova proprietà lastActivity
     this.contacts.sort((a, b) => {
-      const aConv = conversationMap.get(a.contact.conversation_sid);
-      const bConv = conversationMap.get(b.contact.conversation_sid);
-
-      const aTime = aConv?.dateUpdated
-        ? new Date(aConv.dateUpdated).getTime()
-        : 0;
-
-      const bTime = bConv?.dateUpdated
-        ? new Date(bConv.dateUpdated).getTime()
-        : 0;
-
-      return bTime - aTime; // newest first
+      const aTime = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+      const bTime = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+      return bTime - aTime;
     });
 
     this.filteredContacts = [...this.contacts];
@@ -150,18 +178,16 @@ export class Home {
 
     const conversationSid = contact.contact.conversation_sid;
     if (!conversationSid) {
-      console.warn("No conversation SID for this contact");
+      console.warn('No conversation SID for this contact');
       return;
     }
 
     this.twilioService.openConversation(conversationSid);
   }
 
-
-
-  /* calculateTimeDifference(contact: Contact): string {
-    if (!contact.last_message) return '';
-    const date_created = contact.last_message.date_created;
+  calculateTimeDifference(contact: Contact): string {
+    if (!contact.lastActivity) return '';
+    const date_created = contact.lastActivity;
 
     const past = new Date(date_created);
     const now = new Date();
@@ -181,7 +207,7 @@ export class Home {
     }
 
     return 'just now';
-  } */
+  }
 
   /* lastMessageBody(contact: Contact): string {
     if (!contact.last_message) return '';
@@ -233,6 +259,7 @@ export class Home {
         },
       },
       is_selected: true,
+      hasUnread: false,
     };
 
     if (contactData.save) {

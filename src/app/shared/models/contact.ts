@@ -11,6 +11,7 @@ export interface Contact {
       Email?: string;
     };
   };
-
+  lastActivity?: Date | string | null;
   is_selected: boolean;
+  hasUnread: boolean;
 }

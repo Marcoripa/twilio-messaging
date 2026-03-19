@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, BehaviorSubject } from 'rxjs';
+import { Observable, BehaviorSubject,lastValueFrom } from 'rxjs';
 import { environment } from '../../environment';
 import { Client, Conversation, Message } from '@twilio/conversations';
 
@@ -59,6 +59,7 @@ export class TwilioService {
   }
 
   async openConversation(conversationSid: string) {
+    console.log('Opening conversion for sid', conversationSid)
     if (!this.client) return;
 
     const conversation =
@@ -83,7 +84,25 @@ export class TwilioService {
     this.unreadCounts.next(counts);
   }
 
-  sendSms(to: string, text: string): Observable<any> {
-    return this.http.post(`${environment.apiUrl}/send_sms`, { to, text });
+  async findConversationByPhone(phoneNumber: string): Promise<Conversation | null> {
+    console.log('Searching phone number ', phoneNumber)
+    const conversations = await this.getSubscribedConversations();
+    
+    for (const conv of conversations) {
+      const participants = await conv.getParticipants();
+      // Check if any participant identity or address matches the phone number
+      const isMatch = participants.some(p => 
+        p.identity === phoneNumber || 
+        (p.attributes as any)?.phoneNumber === phoneNumber
+      );
+      
+      if (isMatch) return conv;
+    }
+    return null;
+  }
+
+  sendSms(conversationSid: string, text: string): Observable<any> {
+    console.log(`Sending an sms to conversation sid ${conversationSid}`)
+    return this.http.post(`${environment.apiUrl}/send_sms`, { conversationSid, text });
   }
 }

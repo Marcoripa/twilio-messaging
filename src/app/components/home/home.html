@@ -46,95 +46,74 @@
 
     <!-- Contact List -->
     <div class="flex-1 overflow-y-auto">
-      <!-- <div
-        *ngFor="let contact of filteredContacts; trackBy: trackByPhone"
-        class="flex items-center p-3 cursor-pointer hover:bg-gray-100"
-        [class.unread-bg]="contact.hasUnread"
-        [ngClass]="{ 'bg-blue-100': contact.is_selected }"
-        (click)="onContactSelect(contact)"
-        [title]="getContactLabel(contact)"
-      >
-        <img
-          [src]="
-            'https://ui-avatars.com/api/?name=' + (contact.contact?.fields?.Name ?? 'New Contact')
-          "
-          class="w-12 h-12 rounded-full object-cover mr-3"
-        />
-        <div class="flex-1 overflow-hidden">
-          <div class="flex justify-between items-start">
-            <div class="font-medium text-gray-800 truncate">
-              <strong [style.font-weight]="contact.hasUnread ? '800' : '400'">
-                {{ getContactLabel(contact) }}
-              </strong>
-              
-            </div>
-            <div class="text-xs text-gray-500 ml-2 flex-shrink-0" *ngIf="contact.lastActivity">
-               {{ calculateTimeDifference(contact) }}
-            </div>
+      <ng-container *ngIf="filteredContacts && filteredContacts.length > 0; else isLoading">
+        <div
+          *ngFor="let contact of filteredContacts; trackBy: trackByPhone"
+          class="flex items-center p-3 cursor-pointer transition-all duration-200 border-l-4"
+          [class.bg-white]="contact.hasUnread"
+          [class.shadow-md]="contact.hasUnread"
+          [class.z-10]="contact.hasUnread"
+          [class.my-1]="contact.hasUnread"
+          [class.rounded-r-lg]="contact.hasUnread"
+          [class.border-blue-600]="contact.hasUnread"
+          [class.border-transparent]="!contact.hasUnread"
+          [class.hover:bg-gray-100]="!contact.hasUnread"
+          [ngClass]="{ 'bg-blue-50 border-blue-400': contact.is_selected }"
+          (click)="onContactSelect(contact)"
+          [title]="getContactLabel(contact)"
+        >
+          <div class="relative">
+            <img
+              [src]="
+                'https://ui-avatars.com/api/?name=' + (contact.contact?.fields?.Name ?? 'New Contact')
+              "
+              class="w-12 h-12 rounded-full object-cover mr-3"
+            />
+            <span
+              *ngIf="contact.hasUnread"
+              class="absolute top-0 right-2 block h-3 w-3 rounded-full ring-2 ring-white bg-blue-600"
+            >
+            </span>
           </div>
-          <p class="text-sm text-gray-500 truncate">{{ contact.phone }}</p>
-        </div>
-      </div> -->
-      <div
-        *ngFor="let contact of filteredContacts; trackBy: trackByPhone"
-        class="flex items-center p-3 cursor-pointer transition-all duration-200 border-l-4"
-        [class.bg-white]="contact.hasUnread"
-        [class.shadow-md]="contact.hasUnread"
-        [class.z-10]="contact.hasUnread"
-        [class.my-1]="contact.hasUnread"
-        [class.rounded-r-lg]="contact.hasUnread"
-        [class.border-blue-600]="contact.hasUnread"
-        [class.border-transparent]="!contact.hasUnread"
-        [class.hover:bg-gray-100]="!contact.hasUnread"
-        [ngClass]="{ 'bg-blue-50 border-blue-400': contact.is_selected }"
-        (click)="onContactSelect(contact)"
-        [title]="getContactLabel(contact)"
-      >
-        <div class="relative">
-          <img
-            [src]="
-              'https://ui-avatars.com/api/?name=' + (contact.contact?.fields?.Name ?? 'New Contact')
-            "
-            class="w-12 h-12 rounded-full object-cover mr-3"
-          />
-          <span
-            *ngIf="contact.hasUnread"
-            class="absolute top-0 right-2 block h-3 w-3 rounded-full ring-2 ring-white bg-blue-600"
-          >
-          </span>
-        </div>
 
-        <div class="flex-1 overflow-hidden">
-          <div class="flex justify-between items-start">
-            <div
-              class="font-medium truncate"
-              [class.text-blue-900]="contact.hasUnread"
-              [class.text-gray-800]="!contact.hasUnread"
-            >
-              <strong [style.font-weight]="contact.hasUnread ? '800' : '500'">
-                {{ getContactLabel(contact) }}
-              </strong>
+          <div class="flex-1 overflow-hidden">
+            <div class="flex justify-between items-start">
+              <div
+                class="font-medium truncate"
+                [class.text-blue-900]="contact.hasUnread"
+                [class.text-gray-800]="!contact.hasUnread"
+              >
+                <strong [style.font-weight]="contact.hasUnread ? '800' : '500'">
+                  {{ getContactLabel(contact) }}
+                </strong>
+              </div>
+              <div
+                class="text-xs ml-2 flex-shrink-0"
+                [class.text-blue-600]="contact.hasUnread"
+                [class.font-bold]="contact.hasUnread"
+                [class.text-gray-500]="!contact.hasUnread"
+                *ngIf="contact.lastActivity"
+              >
+                {{ calculateTimeDifference(contact) }}
+              </div>
             </div>
-            <div
-              class="text-xs ml-2 flex-shrink-0"
-              [class.text-blue-600]="contact.hasUnread"
-              [class.font-bold]="contact.hasUnread"
+            <p
+              class="text-sm truncate"
+              [class.text-gray-700]="contact.hasUnread"
+              [class.font-medium]="contact.hasUnread"
               [class.text-gray-500]="!contact.hasUnread"
-              *ngIf="contact.lastActivity"
             >
-              {{ calculateTimeDifference(contact) }}
-            </div>
+              {{ contact.phone }}
+            </p>
           </div>
-          <p
-            class="text-sm truncate"
-            [class.text-gray-700]="contact.hasUnread"
-            [class.font-medium]="contact.hasUnread"
-            [class.text-gray-500]="!contact.hasUnread"
-          >
-            {{ contact.phone }}
-          </p>
         </div>
-      </div>
+      </ng-container>
+      <!-- Loader -->
+      <ng-template #isLoading>
+        <div class="flex justify-center items-center h-full">
+          <span class="text-gray-500 animate-pulse">Loading contacts...</span>
+        </div>
+      </ng-template>
     </div>
   </aside>
 
@@ -245,20 +224,6 @@
     <div class="bg-white rounded-lg p-6 w-96 mx-2">
       <h2 class="text-xl font-semibold mb-4 text-center">Who are you reaching out today?</h2>
 
-      <div class="flex items-center mb-4 justify-center">
-        <span class="mr-3 text-gray-700">Just send text</span>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" class="sr-only peer" #save />
-          <div
-            class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:bg-blue-500 transition-all duration-200"
-          ></div>
-          <div
-            class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-md transform transition-all duration-200 peer-checked:translate-x-5"
-          ></div>
-        </label>
-        <span class="ml-3 text-gray-700">Save contact</span>
-      </div>
-
       <input type="text" placeholder="Contact name" #name class="w-full mb-3 p-2 border rounded" />
       <input type="text" placeholder="Phone" #phone class="w-full mb-3 p-2 border rounded" />
 
@@ -270,7 +235,7 @@
           Never mind
         </button>
         <button
-          (click)="goToChat({ name: name.value, phone: phone.value, save: save.checked })"
+          (click)="goToChat({ name: name.value, phone: phone.value})"
           class="cursor-pointer px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
         >
           Let's chat

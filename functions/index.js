@@ -9,6 +9,12 @@ const twilio = require('twilio');
 admin.initializeApp();
 setGlobalOptions({ maxInstances: 10 });
 
+const { AccessToken } = twilio.jwt;
+const { VoiceGrant, ChatGrant } = AccessToken;
+const {
+  twiml: { VoiceResponse },
+} = twilio;
+
 const TWILIO_ACCOUNT_ID = defineSecret("TWILIO_ACCOUNT_ID");
 const TWILIO_AUTH_TOKEN = defineSecret("TWILIO_AUTH_TOKEN");
 const TWILIO_API_KEY = defineSecret("TWILIO_API_KEY");
@@ -18,14 +24,16 @@ const TWILIO_PHONE = defineSecret("TWILIO_PHONE");
 const AIRTABLE_TOKEN = defineSecret("AIRTABLE_TOKEN");
 const AIRTABLE_BASE_ID = defineSecret("AIRTABLE_BASE_ID");
 const AIRTABLE_TABLE_ID = defineSecret("AIRTABLE_TABLE_ID");
-
-const { AccessToken } = twilio.jwt;
-const { VoiceGrant } = AccessToken;
-const { twiml: { VoiceResponse } } = twilio;
+const TWILIO_CONVERSATIONS_SERVICE_SID = defineSecret("TWILIO_CONVERSATIONS_SERVICE_SID")
+const TWILIO_IDENTITY = defineSecret("TWILIO_IDENTITY")
 
 const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
+
+const getTwilioClient = () => {
+  return twilio(TWILIO_ACCOUNT_ID.value(), TWILIO_AUTH_TOKEN.value());
+};
 
 const validateToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -46,153 +54,178 @@ const validateToken = async (req, res, next) => {
   }
 };
 
-async function fetchAllTwilioMessages() {
-  const auth = Buffer.from(`${TWILIO_ACCOUNT_ID.value()}:${TWILIO_AUTH_TOKEN.value()}`).toString('base64');
-  let allMessages = [];
-  let nextUrl = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_ID.value()}/Messages.json?PageSize=100`;
-
-  while (nextUrl) {
-    const res = await fetch(nextUrl, { headers: { Authorization: `Basic ${auth}` } });
-    if (!res.ok) throw new Error(`Twilio error: ${res.statusText}`);
-    const data = await res.json();
-    allMessages.push(...data.messages);
-    nextUrl = data.next_page_uri ? `https://api.twilio.com${data.next_page_uri}` : null;
-  }
-  return allMessages;
-}
-
 async function fetchAirtableContacts() {
   const res = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID.value()}/${AIRTABLE_TABLE_ID.value()}`, {
     headers: { Authorization: `Bearer ${AIRTABLE_TOKEN.value()}` },
   });
-  if (!res.ok) throw new Error(`Airtable error: ${res.statusText}`);
-  const data = await res.json();
-  return Object.fromEntries(data.records.map((r) => [r.fields.Phone, r]));
-}
-
-function groupMessagesByContact(messages) {
-  const conversations = {};
-  for (const msg of messages) {
-    const contactPhone = msg.from === TWILIO_PHONE.value() ? msg.to : msg.from;
-    if (!conversations[contactPhone]) conversations[contactPhone] = [];
-    conversations[contactPhone].push(msg);
+  if (!res.ok) {
+    throw new Error(`Airtable error: ${res.statusText}`);
   }
-  Object.values(conversations).forEach(list => list.sort((a, b) => new Date(a.date_created) - new Date(b.date_created)));
-  return conversations;
+
+  const data = await res.json();
+
+  return Object.fromEntries(
+    data.records
+      .filter(r => r.fields?.Phone) // only keep records with a phone number
+      .map(r => [
+        r.fields.Phone,
+        {
+          id: r.id,
+          conversation_sid: r.fields['Conversation_SID'] ?? '',
+          createdTime: r.createdTime,
+          fields: r.fields,
+        }
+      ])
+  );
 }
 
 // --- Proteced Routes --- 
 
-app.get('/api/conversations', validateToken, async (req, res) => {
-  try {
-    const [messages, airtableContacts] = await Promise.all([
-      fetchAllTwilioMessages(),
-      fetchAirtableContacts(),
-    ]);
+app.get('/api/contacts', async (req, res) => {
+  const [airtableContacts] = await Promise.all([fetchAirtableContacts()]);
 
-    const groupedMessages = groupMessagesByContact(messages);
-    const conversations = Object.entries(airtableContacts).map(([phone, contact]) => {
-      const msgs = groupedMessages[phone] || [];
-      const lastMessage = msgs.at(-1) || null;
+  const contacts = Object.entries(airtableContacts).map(([phone, contact]) => {
       return {
-        phone, contact, messages: msgs, last_message: lastMessage,
-        lastMessageTimestamp: lastMessage ? new Date(lastMessage.date_created).getTime() : 0,
-        is_registered: true, is_selected: false,
+        phone,
+        contact,
+        is_registered: true,
+        is_selected: false
       };
     });
 
-    Object.entries(groupedMessages).forEach(([phone, msgs]) => {
-      if (!airtableContacts[phone]) {
-        const lastMessage = msgs.at(-1);
-        conversations.push({
-          phone, contact: null, messages: msgs, last_message: lastMessage,
-          lastMessageTimestamp: new Date(lastMessage.date_created).getTime(),
-          is_registered: false, is_selected: false,
-        });
-      }
-    });
+  res.json(contacts);
+});
 
-    conversations.sort((a, b) => b.lastMessageTimestamp - a.lastMessageTimestamp);
-    res.json(conversations);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+app.post('/api/create_conversation', async (req, res) => {
+  try {
+    const { name, phone } = req.body;
+    
+    const conversationSid = await startTwilioChat(phone);
+
+    if (name && conversationSid) {
+      const nameParts = (name || '').split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      const postData = {
+        records: [{
+          fields: {
+            'First Name': firstName,
+            'Last Name': lastName,
+            'Phone': phone,
+            'Conversation_SID': conversationSid
+          }
+        }]
+      };
+
+      const airtableResponse = await fetch(
+        `https://api.airtable.com/v0/${AIRTABLE_BASE_ID.value()}/${AIRTABLE_TABLE_ID.value()}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${AIRTABLE_TOKEN.value()}`,
+          },
+          body: JSON.stringify(postData)
+        }
+      );
+
+      const airtableData = await airtableResponse.json();
+      console.log('Airtable saved:', airtableData);
+
+      res.status(200).json({ conversationSid });
+    } else {
+      console.warn('Name missing, impossible to initialize conversation');
+      res.status(500).json({ error: 'Failed to initialize conversation' });
+    }
+  } catch (error) {
+    console.error('Failed to initialize conversation:', error);
+    res.status(500).json({ error: 'Failed to initialize conversation' });
   }
 });
 
-app.post('/api/save_contact', validateToken, async (req, res) => {
-  //TODO: check the contact is not listed yet
-  const { name, phone } = req.body;
+app.post('/api/send_sms', async (req, res) => {
+  const { conversationSid, text } = req.body;
+
+  console.log(conversationSid)
+  console.log(text)
 
   try {
-    const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID.value()}/${AIRTABLE_TABLE_ID.value()}`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${AIRTABLE_TOKEN.value()}`,
-      },
-      body: JSON.stringify({
-        records: [
-                {
-                  fields: {
-                    Name: name,
-                    'Shoot Date': '',
-                    Phone: phone,
-                    Email: '',
-                  },
-                },
-              ]
-      })
-    });
-    const result = await response.json();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-})
+    const client = getTwilioClient();
 
-app.post('/api/send_sms', validateToken, async (req, res) => {
-  const { to, text } = req.body;
-  const auth = Buffer.from(`${TWILIO_ACCOUNT_ID.value()}:${TWILIO_AUTH_TOKEN.value()}`).toString('base64');
-  
-  const body = new URLSearchParams({
-    From: TWILIO_PHONE.value(),
-    To: to,
-    Body: text,
-  });
+    await client.conversations.v1
+      .conversations(conversationSid)
+      .messages
+      .create({
+        body: text
+      });
 
-  try {
-    const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_ID.value()}/Messages.json`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${auth}`
-      },
-      body: body.toString()
-    });
-    const result = await response.json();
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(200).json({ conversationSid });
+  } catch(err) {
+    console.error('Failed to send sms:', err);
+    res.status(500).json({ err: 'Failed to send sms' });
   }
 });
 
 app.get('/api/token', validateToken, (req, res) => {
-  const identity = 'browser_user';
-  const token = new AccessToken(
-    TWILIO_ACCOUNT_ID.value(), 
-    TWILIO_API_KEY.value(), 
-    TWILIO_API_SECRET.value(), 
-    { identity }
-  );
+  const token = new AccessToken(TWILIO_ACCOUNT_ID.value(), TWILIO_API_KEY.value(), TWILIO_API_SECRET.value(), { identity: TWILIO_IDENTITY.value() });
 
   const voiceGrant = new VoiceGrant({
     outgoingApplicationSid: TWILIO_APP_SID.value(),
     incomingAllow: true,
   });
-
   token.addGrant(voiceGrant);
+
+  const chatGrant = new ChatGrant({
+    serviceSid: TWILIO_CONVERSATIONS_SERVICE_SID.value(),
+  });
+  token.addGrant(chatGrant);
+
   res.json({ token: token.toJwt() });
 });
+
+async function startTwilioChat(recipientPhone) {
+  console.log('Starting chat with phone number', recipientPhone)
+  try {
+    const client = getTwilioClient();
+    // 1. Look for existing conversations for this phone number
+    const participantConversations = await client.conversations.v1.participantConversations
+      .list({ address: recipientPhone, limit: 1 });
+
+    if (participantConversations.length > 0) {
+      console.log('Existing conversation found:', participantConversations[0].conversationSid);
+      return participantConversations[0].conversationSid;
+    }
+
+    const conversation = await client.conversations.v1.conversations.create({
+      friendlyName: recipientPhone,
+    });
+
+    await client.conversations.v1.conversations(conversation.sid).participants.create({
+      'messagingBinding.address': recipientPhone,
+      'messagingBinding.proxyAddress': TWILIO_PHONE.value(),
+    });
+
+    await client.conversations.v1.conversations(conversation.sid).participants.create({
+      identity: TWILIO_IDENTITY.value(),
+    });
+
+    return conversation.sid
+  } catch (err) {
+    if (err.code === 50404 || err.message.includes('already exists in Conversation')) {
+    const sidMatch = err.message.match(/CH[a-fA-F0-9]{32}/);
+    
+      if (sidMatch) {
+        const existingSid = sidMatch[0];
+        console.log('Found existing conversation SID:', existingSid);
+        return existingSid;
+      }
+    }
+
+    console.error('An actual error occurred:', err);
+    return null;
+  }
+}
 
 // -- Public Routes --
 
@@ -210,7 +243,8 @@ exports.api = onRequest({
   secrets: [
     "TWILIO_ACCOUNT_ID", "TWILIO_AUTH_TOKEN", "TWILIO_API_KEY", 
     "TWILIO_API_SECRET", "TWILIO_APP_SID", "TWILIO_PHONE", 
-    "AIRTABLE_TOKEN", "AIRTABLE_BASE_ID", "AIRTABLE_TABLE_ID"
+    "AIRTABLE_TOKEN", "AIRTABLE_BASE_ID", "AIRTABLE_TABLE_ID", 
+    "TWILIO_CONVERSATIONS_SERVICE_SID", "TWILIO_IDENTITY"
   ],
   enforceAppCheck: true
 }, app);

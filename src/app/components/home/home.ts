@@ -1,7 +1,6 @@
 import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
 import { Contact } from '../../shared/models/contact';
 import { ContactService } from '../../services/contact';
 import { TwilioService } from '../../services/twilio';
@@ -34,7 +33,6 @@ export class Home {
   constructor(
     private contactService: ContactService,
     private twilioService: TwilioService,
-    private http: HttpClient,
     private cd: ChangeDetectorRef,
   ) {
     this.messages$ = this.twilioService.messages$;
@@ -70,7 +68,6 @@ export class Home {
   }
 
   async updateContactAndMoveToTop(conversationSid: string) {
-    console.log(conversationSid);
     // 1. Find the contact index
     const index = this.contacts.findIndex((c) => c.contact.conversation_sid === conversationSid);
     if (index === -1) return;
@@ -172,10 +169,7 @@ export class Home {
 
   async onContactSelect(contact: Contact) {
     this.filteredContacts.forEach((filteredContact) => (filteredContact.is_selected = false));
-    contact.is_selected = true;
-    contact.hasUnread = false;
-    this.selectedContact = contact;
-
+    
     setTimeout(() => {
       const container = document.querySelector('.messages');
       if (container) container.scrollTop = container.scrollHeight;
@@ -208,6 +202,10 @@ export class Home {
     } else {
       this.twilioService.openConversation(conversationSid);
     }
+
+    contact.is_selected = true;
+    contact.hasUnread = false;
+    this.selectedContact = contact;
   }
 
   calculateTimeDifference(contact: Contact): string {
@@ -233,11 +231,6 @@ export class Home {
 
     return 'just now';
   }
-
-  /* lastMessageBody(contact: Contact): string {
-    if (!contact.last_message) return '';
-    return contact.last_message.body;
-  } */
 
   sendMessage() {
     if (!this.newMessage.trim() || !this.selectedContact) return;

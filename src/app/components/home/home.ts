@@ -45,7 +45,7 @@ export class Home {
       const serverContacts = await firstValueFrom(this.contactService.getAll());
       this.contacts = [...serverContacts];
       this.filteredContacts = [...serverContacts];
-      console.log('Contatti caricati:', this.contacts.length);
+      console.log('Contacts loaded:', this.contacts.length);
 
       // 2. Get the token and initialize Twilio
       const res = await firstValueFrom(this.twilioService.getAccessToken());
@@ -182,7 +182,7 @@ export class Home {
       const existingConv = await this.twilioService.findConversationByPhone(contact.phone);
 
       if (existingConv) {
-        this.twilioService.openConversation(existingConv.sid);
+        this.twilioService.openConversation(existingConv.sid, contact.phone);
       } else {
         console.warn('No conversation found for this phone number');
         this.contactService.startChat(contact.contact.fields.Name, contact.phone).subscribe({
@@ -191,7 +191,7 @@ export class Home {
             // Update the local object
             if (sid) {
               contact.contact.conversation_sid = sid;
-              this.twilioService.openConversation(sid);
+              this.twilioService.openConversation(sid, contact.phone);
             }
           },
           error: (err) => {
@@ -200,7 +200,7 @@ export class Home {
         });
       }
     } else {
-      this.twilioService.openConversation(conversationSid);
+      this.twilioService.openConversation(conversationSid, contact.phone);
     }
 
     contact.is_selected = true;

@@ -31,6 +31,8 @@ First things first: build the frontend. This will create a folder named dist
 ng build
 ```
 
+In order to deploy on firebase, you must use the file functions/index.js
+
 Next, deploy onto firebase with:
 
 ```bash
@@ -38,3 +40,9 @@ firebase deploy
 ```
 Firebase/Google saves the secrets here: https://console.cloud.google.com/security/secret-manager?project=twilio-messaging-8183c 
 
+
+
+TODO
+1. Fetch conversations from unregistered contacts;
+2. Refresh contact list after adding a new contact;
+3. Make phone ring on incoming call;

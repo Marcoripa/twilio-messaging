@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { Observable, BehaviorSubject } from 'rxjs';
 import { environment } from '../../environment';
 import { Client, Conversation, Message } from '@twilio/conversations';
+import { ChatMessage } from '../shared/models/chatMessage';
 
 @Injectable({providedIn: 'root'})
 export class TwilioService {
@@ -11,7 +12,7 @@ export class TwilioService {
   private conversation: Conversation | undefined;
   private conversations = new Map<string, Conversation>();
 
-  private messagesSubject = new BehaviorSubject<Message[]>([]);
+  private messagesSubject = new BehaviorSubject<ChatMessage[]>([]);
   public messages$ = this.messagesSubject.asObservable();
   private unreadCounts = new BehaviorSubject<Record<string, number>>({});
   public unreadCounts$ = this.unreadCounts.asObservable();
@@ -58,8 +59,8 @@ export class TwilioService {
     return paginator.items;
   }
 
-  async openConversation(conversationSid: string) {
-    console.log('Opening conversion for sid', conversationSid)
+  async openConversation(conversationSid: string, phoneNumber:string) {
+    console.log(`Opening conversion for phone ${phoneNumber}, sid ${conversationSid}`)
     if (!this.client) return;
 
     const conversation =
@@ -69,10 +70,94 @@ export class TwilioService {
     this.conversation = conversation;
 
     const paginator = await conversation.getMessages();
-    this.messagesSubject.next(paginator.items);
+    const conversationMessages = paginator.items;
 
+    let apiMessages: any[] = [];
+
+    // 3. Fetch Messages API messages
+    try {
+      const res = await fetch(`${environment.apiUrl}/messages?phone=${phoneNumber}`);
+      apiMessages = await res.json();
+      console.log('Fetched messages API', apiMessages);
+    } catch (err) {
+      console.warn('Failed to fetch messages API', err);
+    }
+
+    // 4. Normalize both sources
+    const normalize = (msg: any, source: 'conversation' | 'messages-api') => {
+      const rawAuthor = msg.author || msg.from;
+
+      return {
+        sid: msg.sid,
+        body: msg.body,
+        dateCreated: new Date(msg.dateCreated),
+        author: rawAuthor === environment.twilio_Phone ? 'system' : rawAuthor,
+        source
+      };
+    };
+
+    const normalizedConversation = conversationMessages.map(m =>
+      normalize(m, 'conversation')
+    );
+
+    const normalizedApi = apiMessages.map(m =>
+      normalize(m, 'messages-api')
+    );
+
+    const merged = [...normalizedConversation, ...normalizedApi];
+    merged.sort(
+      (a, b) => a.dateCreated.getTime() - b.dateCreated.getTime()
+    );
+
+    const deduped: typeof merged = [];
+
+    for (const msg of merged) {
+      const isDuplicate = deduped.some(existing => {
+        const sameBody = existing.body === msg.body;
+
+        const timeDiffPositive = Math.abs(
+          existing.dateCreated.getTime() - msg.dateCreated.getTime()
+        );
+        const timeDiffNegative = Math.abs(
+          msg.dateCreated.getTime() - existing.dateCreated.getTime()
+        );
+
+        return sameBody && (timeDiffPositive <= 1000 || timeDiffNegative >= 1000);
+      });
+
+      if (!isDuplicate) {
+        deduped.push(msg);
+      }
+    }
+
+    console.log('Merged messages', deduped);
+
+    this.messagesSubject.next(deduped);
+
+     // 7. Real-time updates (conversation only)
     conversation.on("messageAdded", (message: Message) => {
-      const updated = [...this.messagesSubject.value, message];
+      const normalized = normalize(message, 'conversation');
+      const current = this.messagesSubject.value;
+
+      const isDuplicate = current.some(existing => {
+        const sameBody = existing.body === normalized.body;
+
+        const timeDiffPositive = Math.abs(
+          existing.dateCreated.getTime() - normalized.dateCreated.getTime()
+        );
+        const timeDiffNegative = Math.abs(
+          normalized.dateCreated.getTime() - existing.dateCreated.getTime()
+        );
+
+        return sameBody && (timeDiffPositive <= 1000 || timeDiffNegative >= 1000);
+      });
+
+      if (isDuplicate) return;
+
+      const updated = [...current, normalized].sort(
+        (a, b) => a.dateCreated.getTime() - b.dateCreated.getTime()
+      );
+
       this.messagesSubject.next(updated);
     });
 

@@ -218,6 +218,18 @@ app.post('/api/send_sms', async (req, res) => {
   }
 });
 
+app.get('/api/messages', async (req, res) => {
+  const { phone } = req.query;
+  console.log(phone)
+
+  const [sent, received] = await Promise.all([
+    client.messages.list({ from: phone, limit: 50 }),
+    client.messages.list({ to: phone, limit: 50 })
+  ]);
+
+  res.json([...sent, ...received]);
+});
+
 
 if (PRODUCTION == 'desktop') {
   module.exports = app;

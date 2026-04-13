@@ -1,7 +1,7 @@
 {
   "name": "twilio-messaging",
   "main": "main.js",
-  "version": "1.0.5",
+  "version": "1.0.7",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -39,7 +39,9 @@
       "main.js",
       "preload.js",
       "server/**/*",
-      "package.json"
+      "package.json",
+      "public/**/*",
+      ".env"
     ],
     "directories": {
       "output": "release"
@@ -72,6 +74,7 @@
     "@twilio/conversations": "^2.7.0",
     "@twilio/voice-sdk": "^2.18.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "firebase": "^12.8.0",
     "firebase-admin": "^13.6.0",
@@ -85,7 +88,7 @@
     "@angular/cli": "^21.0.4",
     "@angular/compiler-cli": "^21.0.0",
     "@tailwindcss/postcss": "^4.1.12",
-    "electron": "^39.2.7",
+    "electron": "^39.8.7",
     "electron-builder": "^26.4.0",
     "jsdom": "^27.1.0",
     "postcss": "^8.5.3",

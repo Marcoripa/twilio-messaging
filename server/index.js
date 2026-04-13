@@ -3,7 +3,6 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const twilio = require('twilio');
-const path = require('path');
 
 const { AccessToken } = twilio.jwt;
 const { VoiceGrant, ChatGrant } = AccessToken;
@@ -11,12 +10,15 @@ const {
   twiml: { VoiceResponse },
 } = twilio;
 
-dotenv.config({
-  path: path.resolve(__dirname, '../.env'),
-});
+const app = express();
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+dotenv.config();
 
 const PRODUCTION = process.env.PRODUCTION;
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5001;
 const airtableBaseId = process.env.AIRTABLE_BASE_ID;
 const airtableTableId = process.env.AIRTABLE_TABLE_ID;
 const airtableToken = process.env.AIRTABLE_TOKEN;
@@ -27,15 +29,10 @@ const twilioApiKey = process.env.TWILIO_API_KEY;
 const twilioApiSecret = process.env.TWILIO_API_SECRET;
 const twilioAppSid = process.env.TWILIO_APP_SID;
 const twilioConvServiceSid = process.env.TWILIO_CONVERSATIONS_SERVICE_SID;
-const twilioIdentity = process.env.TWILIO_IDENTITY;
+const twilioIdentity = process.env.TWILIO_IDENTITY || 'browser_user';
 
 const client = twilio(twilioAccountId, twilioAuthToken);
-const basicAuth = btoa(`${twilioAccountId}:${twilioAuthToken}`);
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+/* const basicAuth = btoa(`${twilioAccountId}:${twilioAuthToken}`); */
 
 
 async function fetchAirtableContacts() {
@@ -200,9 +197,6 @@ app.post('/api/create_conversation', async (req, res) => {
 app.post('/api/send_sms', async (req, res) => {
   const { conversationSid, text } = req.body;
 
-  console.log(conversationSid)
-  console.log(text)
-
   try {
     await client.conversations.v1
       .conversations(conversationSid)
@@ -220,7 +214,6 @@ app.post('/api/send_sms', async (req, res) => {
 
 app.get('/api/messages', async (req, res) => {
   const { phone } = req.query;
-  console.log(phone)
 
   const [sent, received] = await Promise.all([
     client.messages.list({ from: phone, limit: 50 }),
@@ -229,7 +222,6 @@ app.get('/api/messages', async (req, res) => {
 
   res.json([...sent, ...received]);
 });
-
 
 if (PRODUCTION == 'desktop') {
   module.exports = app;

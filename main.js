@@ -2,8 +2,8 @@ const { app, BrowserWindow, ipcMain  } = require('electron');
 const path = require('path');
 const dotenv = require('dotenv');
 
-dotenv.config();
-const PORT = process.env.PORT;
+dotenv.config({ path: path.join(app.getAppPath(), '.env') });
+const PORT = process.env.PORT || 5001;
 
 const expressApp = require('./server/index'); 
 
@@ -13,9 +13,10 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: path.join(app.getAppPath(), 'public/favicon.ico'),
     webPreferences: {
       // Points to a preload script if you need to bridge Node APIs to Angular
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(app.getAppPath(), 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },

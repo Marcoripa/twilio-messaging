@@ -21,7 +21,18 @@ node server/index.js
 
 Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
 
-## Deploy as Desktop app with Electron
+## Deploy as a desktop app with Electron
+
+Change variable PRODUCTION in .env file to be 'desktop'
+
+# For Windows:
+```bash
+npm run build:electron
+```
+# For Mac/Linux:
+```bash
+npm run build:electron:mac
+```
 
 ## Deploy on Firebase
 

@@ -4,16 +4,34 @@ This project was generated using [Angular CLI](https://github.com/angular/angula
 
 ## Development server
 Before running the show, dont forget to update the environmental variables.
-- For the frontend, update src/environments.ts
+- For the frontend, update src/environment.ts:
+    - apiUrl:  'http://localhost:5000/api', for local development and desktop app
+    - apiUrl: '/api', for deploying onto Firebase
 - For the backend, update .env
+    - PRODUCTION = local for local development
+    - PRODUCTION = firebase for deploying onto Firebase
+    - PRODUCTION = desktop for deploying as a desktop app (with Electron)
 
-To start a local development server, run:
+Install node dependencies with: 
+```bash
+npm install
+```
+
+To start a local development server, make sure you have the Angular cli and the twilio sdk:
+
+```bash
+npm install -g @angular/cli
+npm install --save @twilio/conversations
+```
+
+
+Then run with:
 
 ```bash
 ng serve
 ```
 
-Then start the development backend with:
+To start the development backend run:
 
 ```bash
 node server/index.js
@@ -21,17 +39,46 @@ node server/index.js
 
 Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
 
-## Deploy as a desktop app with Electron
+## Deploy as Desktop app with Electron
 
-Change variable PRODUCTION in .env file to be 'desktop'
 
-# For Windows:
+Ensure the frontend is built:
+```bash
+ng build
+```
+
+- Windows:
+run a development environment with 
+```bash
+npm run electron:dev
+```
+build and start desktop Electron app with:
 ```bash
 npm run build:electron
 ```
-# For Mac/Linux:
+
+- Linux:
+ensure chrome-sandbox has the right permissions:
 ```bash
-npm run build:electron:mac
+sudo chown root node_modules/electron/dist/chrome-sandbox
+sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+```
+
+build and start desktop Electron app with:
+```bash
+npm run build:electron-linux
+```
+
+- Mac:
+
+build and start desktop Electron app with:
+```bash
+npm run build:electron-mac
+```
+
+run a development environment with 
+```bash
+npm run electron:dev
 ```
 
 ## Deploy on Firebase
@@ -51,9 +98,3 @@ firebase deploy
 ```
 Firebase/Google saves the secrets here: https://console.cloud.google.com/security/secret-manager?project=twilio-messaging-8183c 
 
-
-
-TODO
-1. Fetch conversations from unregistered contacts;
-2. Refresh contact list after adding a new contact;
-3. Make phone ring on incoming call;

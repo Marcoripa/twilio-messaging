@@ -34,7 +34,7 @@ export class Home {
   constructor(
     private contactService: ContactService,
     private twilioService: TwilioService,
-    private cd: ChangeDetectorRef,
+    private cd: ChangeDetectorRef
   ) {
     this.messages$ = this.twilioService.messages$;
     this.unreadCounts$ = this.twilioService.unreadCounts$;
@@ -69,33 +69,35 @@ export class Home {
   }
 
   async updateContactAndMoveToTop(conversationSid: string) {
-    // 1. Find the contact index
-    const index = this.contacts.findIndex((c) => c.contact.conversation_sid === conversationSid);
-    if (index === -1) return;
+      // 1. Find the contact index
+      const index = this.contacts.findIndex((c) => c.contact.conversation_sid === conversationSid);
+      if (index === -1) return;
 
-    // 2. Fetch the specific conversation data to get the latest indices
-    const conversations = await this.twilioService.getSubscribedConversations();
-    const conv = conversations.find((c) => c.sid === conversationSid);
+      // 2. Fetch the specific conversation data to get the latest indices
+      const conversations = await this.twilioService.getSubscribedConversations();
+      const conv = conversations.find((c) => c.sid === conversationSid);
 
-    if (conv) {
+      if (!conv) {
+        return
+      }
+
       const lastIndex = conv.lastMessage?.index ?? 0;
       const lastReadIndex = conv.lastReadMessageIndex ?? 0;
 
       // 3. Update the specific contact's properties
-      this.contacts[index] = {
+      const updatedContact = {
         ...this.contacts[index],
-        lastActivity: conv.dateUpdated || new Date(),
-        hasUnread: lastIndex > lastReadIndex,
+        lastActivity: conv?.lastMessage?.dateCreated || new Date(),
+        hasUnread: true,
       };
-    }
 
-    // 4. Move to top: Remove from old position and unshift to start
-    const updatedContact = this.contacts.splice(index, 1)[0];
-    this.contacts.unshift(updatedContact);
+      // 4. Move to top: Remove from old position and unshift to start
+      const otherContacts = this.contacts.filter((_, i) => i !== index);
+      this.contacts = [updatedContact, ...otherContacts];
+      this.filteredContacts = [...this.contacts];
 
-    // 5. Update UI
-    this.filteredContacts = [...this.contacts];
-    this.cd.detectChanges();
+      // 5. Update UI
+      this.cd.detectChanges();
   }
 
   moveContactToTop(conversationSid: string) {
@@ -171,7 +173,6 @@ export class Home {
   async onContactSelect(contact: Contact) {
     this.selectedContact = undefined
     this.loadingConversation = true;
-    console.log('Loading')
     this.filteredContacts.forEach((filteredContact) => (filteredContact.is_selected = false));
     
     setTimeout(() => {
@@ -211,7 +212,6 @@ export class Home {
     contact.is_selected = true;
     contact.hasUnread = false;
     this.loadingConversation = false;
-    console.log('Conversation loaded')
     this.selectedContact = contact;
   }
 

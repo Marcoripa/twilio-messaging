@@ -11,6 +11,7 @@ export class TwilioService {
   private client: Client | undefined;
   private conversation: Conversation | undefined;
   private conversations = new Map<string, Conversation>();
+  private activeConversationSid: string | null = null;
 
   private messagesSubject = new BehaviorSubject<ChatMessage[]>([]);
   public messages$ = this.messagesSubject.asObservable();
@@ -45,11 +46,41 @@ export class TwilioService {
           counts[sid] = (counts[sid] || 0) + 1;
           this.unreadCounts.next(counts);
         }
+
+        if (sid === this.activeConversationSid) {
+          this.handleInboundActiveMessage(message);
+        }
       });
 
     } catch (error) {
       console.error("Twilio Initialization Error:", error);
     }
+  }
+
+  private handleInboundActiveMessage(message: Message) {
+    const normalized = this.normalizeMessage(message, 'conversation');
+    const current = this.messagesSubject.value;
+
+    const isDuplicate = current.some(existing => 
+      existing.body === normalized.body && 
+      Math.abs(existing.dateCreated.getTime() - normalized.dateCreated.getTime()) < 2000
+    );
+
+    if (!isDuplicate) {
+      this.messagesSubject.next([...current, normalized]);
+    }
+  }
+
+  private normalizeMessage(msg: any, source: 'conversation' | 'messages-api') {
+    const rawAuthor = msg.author || msg.from;
+    return {
+      sid: msg.sid,
+      body: msg.body,
+      dateCreated: new Date(msg.dateCreated),
+      author: rawAuthor === environment.twilio_Phone ? 'system' : rawAuthor,
+      direction: msg.direction,
+      source
+    };
   }
 
   async getSubscribedConversations() {
@@ -59,9 +90,15 @@ export class TwilioService {
     return paginator.items;
   }
 
-  async openConversation(conversationSid: string, phoneNumber:string) {
+  /* async openConversation(conversationSid: string, phoneNumber:string) {
     console.log(`Opening conversion for phone ${phoneNumber}, sid ${conversationSid}`)
     if (!this.client) return;
+
+    this.activeConversationSid = conversationSid;
+
+    if (this.conversation) {
+      this.conversation.removeAllListeners("messageAdded");
+    }
 
     const conversation =
       this.conversations.get(conversationSid) ||
@@ -92,6 +129,7 @@ export class TwilioService {
         body: msg.body,
         dateCreated: new Date(msg.dateCreated),
         author: rawAuthor === environment.twilio_Phone ? 'system' : rawAuthor,
+        direction: msg.direction,
         source
       };
     };
@@ -136,6 +174,10 @@ export class TwilioService {
 
      // 7. Real-time updates (conversation only)
     conversation.on("messageAdded", (message: Message) => {
+      if (message.conversation.sid !== this.activeConversationSid) {
+        return; 
+      }
+
       const normalized = normalize(message, 'conversation');
       const current = this.messagesSubject.value;
 
@@ -167,7 +209,76 @@ export class TwilioService {
     const counts = { ...this.unreadCounts.value };
     counts[conversationSid] = 0;
     this.unreadCounts.next(counts);
-  }
+  } */
+
+  async openConversation(conversationSid: string, phoneNumber: string) {
+    this.activeConversationSid = conversationSid; // Imposta chi è attivo
+    
+    // Svuota i messaggi vecchi mentre carica i nuovi (evita glitch visivi)
+    this.messagesSubject.next([]); 
+
+    const conversation = this.conversations.get(conversationSid) || 
+                        await this.client!.getConversationBySid(conversationSid);
+    this.conversation = conversation;
+
+    const paginator = await conversation.getMessages();
+    const conversationMessages = paginator.items;
+
+    // 3. Fetch Messages API messages
+    let apiMessages: any[] = [];
+    try {
+      const res = await fetch(`${environment.apiUrl}/messages?phone=${phoneNumber}`);
+      apiMessages = await res.json();
+      console.log('Fetched messages API', apiMessages);
+    } catch (err) {
+      console.warn('Failed to fetch messages API', err);
+    }
+
+    const normalizedConversation = conversationMessages.map(m =>
+      this.normalizeMessage(m, 'conversation')
+    );
+
+    const normalizedApi = apiMessages.map(m =>
+      this.normalizeMessage(m, 'messages-api')
+    );
+
+    const merged = [...normalizedConversation, ...normalizedApi];
+    merged.sort(
+      (a, b) => a.dateCreated.getTime() - b.dateCreated.getTime()
+    );
+
+    const deduped: typeof merged = [];
+
+    for (const msg of merged) {
+      const isDuplicate = deduped.some(existing => {
+        const sameBody = existing.body === msg.body;
+
+        const timeDiffPositive = Math.abs(
+          existing.dateCreated.getTime() - msg.dateCreated.getTime()
+        );
+        const timeDiffNegative = Math.abs(
+          msg.dateCreated.getTime() - existing.dateCreated.getTime()
+        );
+
+        return sameBody && (timeDiffPositive <= 1000 || timeDiffNegative >= 1000);
+      });
+
+      if (!isDuplicate) {
+        deduped.push(msg);
+      }
+    }
+
+    console.log('Merged messages', deduped);
+    // ... logica di fetch API e merging (usa this.normalizeMessage) ...
+
+    this.messagesSubject.next(deduped);
+
+    // Reset notifiche per questa conversazione
+    await conversation.setAllMessagesRead();
+    const counts = { ...this.unreadCounts.value };
+    counts[conversationSid] = 0;
+    this.unreadCounts.next(counts);
+  }  
 
   async findConversationByPhone(phoneNumber: string): Promise<Conversation | null> {
     console.log('Searching phone number ', phoneNumber)

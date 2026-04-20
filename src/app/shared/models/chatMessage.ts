@@ -3,5 +3,6 @@ export interface ChatMessage {
   body: string;
   dateCreated: Date;
   author: string;
+  direction: string;
   source: 'conversation' | 'messages-api';
 }

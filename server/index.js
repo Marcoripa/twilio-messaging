@@ -132,18 +132,23 @@ app.post('/api/voice', (req, res) => {
 });
 
 app.get('/api/contacts', async (req, res) => {
-  const [airtableContacts] = await Promise.all([fetchAirtableContacts()]);
+  try {
+    const [airtableContacts] = await Promise.all([fetchAirtableContacts()]);
 
-  const contacts = Object.entries(airtableContacts).map(([phone, contact]) => {
-      return {
-        phone,
-        contact,
-        is_registered: true,
-        is_selected: false
-      };
-    });
+    const contacts = Object.entries(airtableContacts).map(([phone, contact]) => {
+        return {
+          phone,
+          contact,
+          is_registered: true,
+          is_selected: false
+        };
+      });
 
-  res.json(contacts);
+    res.json(contacts);
+  } catch (error) {
+    console.error('Failed to fetch contacts:', error);
+    res.status(500).json({ msg: 'Failed to fetch contacts' });
+  }
 });
 
 app.post('/api/create_conversation', async (req, res) => {
@@ -186,11 +191,11 @@ app.post('/api/create_conversation', async (req, res) => {
       res.status(200).json({ conversationSid });
     } else {
       console.warn('Name missing, impossible to initialize conversation');
-      res.status(500).json({ error: 'Failed to initialize conversation' });
+      res.status(500).json({ msg: 'Failed to initialize conversation: double check inserted name and phone number (make sure phone number starts with a valid prefix' });
     }
   } catch (error) {
     console.error('Failed to initialize conversation:', error);
-    res.status(500).json({ error: 'Failed to initialize conversation' });
+    res.status(500).json({ msg: 'Failed to initialize conversation' });
   }
 });
 
@@ -208,7 +213,7 @@ app.post('/api/send_sms', async (req, res) => {
     res.status(200).json({ conversationSid });
   } catch(err) {
     console.error('Failed to send sms:', err);
-    res.status(500).json({ err: 'Failed to send sms' });
+    res.status(500).json({ msg: 'Failed to send sms' });
   }
 });
 

@@ -48,7 +48,8 @@
       "output": "release"
     },
     "win": {
-      "target": "portable"
+      "target": "portable",
+      "icon": "public/app_logo.ico"
     },
     "mac": {
       "category": "public.app-category.utilities",

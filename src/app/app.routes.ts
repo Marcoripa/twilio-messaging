@@ -4,11 +4,11 @@ import { Login } from './components/login/login';
 import { Home } from './components/home/home';
 
 export const routes: Routes = [
-  // { path: 'login', component: Login },
+  /* { path: 'login', component: Login }, */
   { 
-    path: 'dashboard', 
+    path: '', 
     component: Home, 
-    // canActivate: [authGuard]
+    /* canActivate: [authGuard] */
   },
-  // { path: '', redirectTo: '/dashboard', pathMatch: 'full' }
+  /* { path: '', redirectTo: '/dashboard', pathMatch: 'full' } */
 ];

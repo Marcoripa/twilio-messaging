@@ -46,28 +46,28 @@ Ensure the frontend is built:
 ```bash
 ng build
 ```
-
-- Windows:
 run a development environment with 
 ```bash
 npm run electron:dev
 ```
-build and start desktop Electron app with:
-```bash
-npm run build:electron
-```
+
+- Windows:
+    1. build and start desktop Electron app with:
+    ```bash
+    npm run build:electron
+    ```
 
 - Linux:
-ensure chrome-sandbox has the right permissions:
-```bash
-sudo chown root node_modules/electron/dist/chrome-sandbox
-sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
-```
+    1. ensure chrome-sandbox has the right permissions:
+    ```bash
+    sudo chown root node_modules/electron/dist/chrome-sandbox
+    sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+    ```
 
-build and start desktop Electron app with:
-```bash
-npm run build:electron-linux
-```
+    2. build and start desktop Electron app with:
+    ```bash
+    npm run build:electron-linux
+    ```
 
 - Mac:
 
@@ -98,3 +98,8 @@ firebase deploy
 ```
 Firebase/Google saves the secrets here: https://console.cloud.google.com/security/secret-manager?project=twilio-messaging-8183c 
 
+
+
+TODOS:
+1. Add a loading when conversation is loading
+2. Messages are displayed in the wrong conversation when a conversation is open

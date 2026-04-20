@@ -20,6 +20,7 @@ export class Home {
   filteredContacts: Contact[] = [];
   searchTerm: string = '';
   selectedContact?: Contact;
+  loadingConversation = false;
   newMessage = '';
   twilioPhone = environment.twilio_Phone;
   isModalOpen = false;
@@ -168,6 +169,9 @@ export class Home {
   }
 
   async onContactSelect(contact: Contact) {
+    this.selectedContact = undefined
+    this.loadingConversation = true;
+    console.log('Loading')
     this.filteredContacts.forEach((filteredContact) => (filteredContact.is_selected = false));
     
     setTimeout(() => {
@@ -196,6 +200,7 @@ export class Home {
           },
           error: (err) => {
             console.error('Failed to get SID:', err);
+            alert(`${err.error.msg}`)
           },
         });
       }
@@ -205,6 +210,8 @@ export class Home {
 
     contact.is_selected = true;
     contact.hasUnread = false;
+    this.loadingConversation = false;
+    console.log('Conversation loaded')
     this.selectedContact = contact;
   }
 
@@ -254,9 +261,19 @@ export class Home {
   }
 
   async goToChat(contactData: any) {
+    if (!contactData.phone || !contactData.name) {
+      alert('Please provide both name and phone number');
+      return;
+    }
+    if (!contactData.phone.startsWith('+') && !contactData.phone.startsWith('00')) {
+      alert('Please make sure the phone number starts with + or 00 followed by the country code');
+      return;
+    }
+
     console.log(
       `Searching for existing contact with phone number ${contactData.phone} or name ${contactData.name}`,
     );
+
     const existingContact = this.contacts.find(
       (contact) =>
         contact.phone?.toLowerCase() == contactData.phone ||

@@ -29,6 +29,8 @@ export class Home {
   activeCall: Call | null = null;
   messages$;
   unreadCounts$;
+  isCreatingContact = false;
+  errorMessage: string | null = null;
 
   constructor(
     private contactService: ContactService,
@@ -55,10 +57,15 @@ export class Home {
       await this.sortContactsByConversationActivity();
 
       // 4. Listen for new messages
-      this.twilioService.messageEvents$.subscribe(async (conversationSid) => {
-        if (!conversationSid) return;
-        console.log('Received a new message on conversation ', conversationSid);
-        await this.updateContactAndMoveToTop(conversationSid);
+      this.twilioService.messageEvents$.subscribe(async (event) => {
+        if (!event) return;
+        console.log(`[Home] Received messageEvents notification for ${event.sid} by ${event.author}`);
+        await this.updateContactAndMoveToTop(event.sid, event.author);
+      });
+
+      // 5. Auto-scroll when messages update
+      this.messages$.subscribe(() => {
+        this.scrollToBottom();
       });
     } catch (err) {
       console.error('Inizializzazione fallita:', err);
@@ -67,34 +74,51 @@ export class Home {
     }
   }
 
-  async updateContactAndMoveToTop(conversationSid: string) {
-    // 1. Find the contact index
+  async updateContactAndMoveToTop(conversationSid: string, author: string | null = null) {
+    console.log(`[Home] updateContactAndMoveToTop called for SID: ${conversationSid}, Author: ${author}`);
+    
+    // 1. Find the contact in the master list
     const index = this.contacts.findIndex((c) => c.contact.conversation_sid === conversationSid);
-    if (index === -1) return;
-
-    // 2. Fetch the specific conversation data to get the latest indices
-    const conversations = await this.twilioService.getSubscribedConversations();
-    const conv = conversations.find((c) => c.sid === conversationSid);
-
-    if (conv) {
-      const lastIndex = conv.lastMessage?.index ?? 0;
-      const lastReadIndex = conv.lastReadMessageIndex ?? 0;
-
-      // 3. Update the specific contact's properties
-      this.contacts[index] = {
-        ...this.contacts[index],
-        lastActivity: conv.dateUpdated || new Date(),
-        hasUnread: lastIndex > lastReadIndex,
-      };
+    if (index === -1) {
+      console.warn(`[Home] Contact with SID ${conversationSid} not found in master list. (Total contacts: ${this.contacts.length})`);
+      return;
     }
 
-    // 4. Move to top: Remove from old position and unshift to start
-    const updatedContact = this.contacts.splice(index, 1)[0];
-    this.contacts.unshift(updatedContact);
+    // 2. Determine if it's an external message
+    const myIdentity = this.twilioService.getIdentity();
+    const isExternal = author && author !== myIdentity;
+    const activeSid = this.selectedContact?.contact.conversation_sid;
+    
+    console.log(`[Home] Context: MyID=${myIdentity}, ActiveSID=${activeSid}, MessageAuthor=${author}`);
 
-    // 5. Update UI
-    this.filteredContacts = [...this.contacts];
+    // 3. Update contact properties
+    const contact = this.contacts[index];
+    const isCurrentlyOpen = activeSid === conversationSid;
+    
+    this.contacts[index] = {
+      ...contact,
+      lastActivity: new Date(),
+      // Set unread if: it was already unread OR (it's external AND not the currently open chat)
+      hasUnread: contact.hasUnread || (!!isExternal && !isCurrentlyOpen),
+    };
+    
+    console.log(`[Home] Contact updated: ${this.contacts[index].phone}, hasUnread: ${this.contacts[index].hasUnread}`);
+
+    // 4. Move to top of the master list
+    const [movedContact] = this.contacts.splice(index, 1);
+    this.contacts.unshift(movedContact);
+
+    // 5. Re-apply search if necessary, otherwise update filtered list
+    if (this.searchTerm && this.searchTerm.trim()) {
+      console.log(`[Home] Re-applying search for term: "${this.searchTerm}"`);
+      this.search(this.searchTerm);
+    } else {
+      this.filteredContacts = [...this.contacts];
+    }
+
+    // 6. Force UI refresh
     this.cd.detectChanges();
+    console.log(`[Home] UI Update completed for real-time message`);
   }
 
   moveContactToTop(conversationSid: string) {
@@ -110,18 +134,18 @@ export class Home {
   }
 
   search(term: string): void {
+    this.searchTerm = term;
     const trimmed = term.trim().toLowerCase();
+    
     if (!trimmed) {
       this.filteredContacts = [...this.contacts];
-      this.cd.detectChanges();
-      return;
+    } else {
+      this.filteredContacts = this.contacts.filter((contact) => {
+        const phoneMatches = contact.phone?.toLowerCase().includes(trimmed);
+        const nameMatches = contact.contact?.fields?.Name?.toLowerCase().includes(trimmed);
+        return phoneMatches || nameMatches;
+      });
     }
-
-    this.filteredContacts = this.contacts.filter((contact) => {
-      const phoneMatches = contact.phone?.toLowerCase().includes(trimmed);
-      const nameMatches = contact.contact?.fields?.Name?.toLowerCase().includes(trimmed);
-      return phoneMatches || nameMatches;
-    });
 
     this.cd.detectChanges();
   }
@@ -167,13 +191,21 @@ export class Home {
     return contact.phone;
   }
 
+  isToday(date: Date | string): boolean {
+    const d = new Date(date);
+    const today = new Date();
+    return (
+      d.getDate() === today.getDate() &&
+      d.getMonth() === today.getMonth() &&
+      d.getFullYear() === today.getFullYear()
+    );
+  }
+
   async onContactSelect(contact: Contact) {
     this.filteredContacts.forEach((filteredContact) => (filteredContact.is_selected = false));
+    this.errorMessage = null;
     
-    setTimeout(() => {
-      const container = document.querySelector('.messages');
-      if (container) container.scrollTop = container.scrollHeight;
-    }, 0);
+    this.scrollToBottom();
 
     let conversationSid = contact.contact.conversation_sid;
 
@@ -183,23 +215,27 @@ export class Home {
 
       if (existingConv) {
         this.twilioService.openConversation(existingConv.sid, contact.phone);
+        contact.contact.conversation_sid = existingConv.sid;
       } else {
         console.warn('No conversation found for this phone number');
+        this.isCreatingContact = true;
         this.contactService.startChat(contact.contact.fields.Name, contact.phone).subscribe({
           next: (sid: string) => {
+            this.isCreatingContact = false;
             console.log('Received SID:', sid);
-            // Update the local object
             if (sid) {
               contact.contact.conversation_sid = sid;
               this.twilioService.openConversation(sid, contact.phone);
             }
           },
           error: (err) => {
+            this.isCreatingContact = false;
+            this.errorMessage = err.error?.error || 'Failed to start conversation';
             console.error('Failed to get SID:', err);
           },
         });
       }
-    } else {
+    } else if (conversationSid) {
       this.twilioService.openConversation(conversationSid, contact.phone);
     }
 
@@ -242,52 +278,76 @@ export class Home {
 
     this.newMessage = '';
 
-    // Scroll to bottom
+    this.scrollToBottom();
+  }
+
+  scrollToBottom() {
     setTimeout(() => {
       const container = document.querySelector('.messages');
-      if (container) container.scrollTop = container.scrollHeight;
-    }, 0);
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }, 100);
   }
 
   handleNewTextModal(isOpen: boolean) {
     this.isModalOpen = isOpen;
+    if (!isOpen) {
+      this.errorMessage = null;
+      this.isCreatingContact = false;
+    }
   }
 
   async goToChat(contactData: any) {
-    console.log(
-      `Searching for existing contact with phone number ${contactData.phone} or name ${contactData.name}`,
-    );
+    this.errorMessage = null;
+    const phone = contactData.phone?.trim();
+    const name = contactData.name?.trim();
+
+    if (!phone) {
+      this.errorMessage = 'Phone number is required';
+      return;
+    }
+
+    // Basic regex for phone validation (e.g. +123456789)
+    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+    if (!phoneRegex.test(phone.replace(/\s/g, ''))) {
+      this.errorMessage = 'Invalid phone format. Use E.164 (e.g. +1234567890)';
+      return;
+    }
+
+    console.log(`Searching for existing contact with phone number ${phone} or name ${name}`);
     const existingContact = this.contacts.find(
       (contact) =>
-        contact.phone?.toLowerCase() == contactData.phone ||
-        contact.contact?.fields?.Name?.toLowerCase().includes(contactData.name.toLowerCase()),
+        contact.phone?.replace(/\s/g, '') === phone.replace(/\s/g, '') ||
+        (name && contact.contact?.fields?.Name?.toLowerCase().includes(name.toLowerCase())),
     );
-    console.log(existingContact);
 
     if (existingContact) {
       this.onContactSelect(existingContact);
+      this.handleNewTextModal(false);
     } else {
-      const tempContact = {
-        phone: contactData.phone,
-        conversation_sid: '',
-        contact: {
-          id: 'temp_contact_id',
-          conversation_sid: '',
-          createdTime: new Date().toISOString(),
-          fields: {
-            Name: contactData.name,
-            Phone: contactData.phone,
-          },
+      this.isCreatingContact = true;
+      this.contactService.startChat(name || 'New Contact', phone).subscribe({
+        next: (sid) => {
+          this.isCreatingContact = false;
+          // Refresh contacts to include the new one
+          this.contactService.getAll().subscribe(updatedContacts => {
+            this.contacts = [...updatedContacts];
+            this.filteredContacts = [...updatedContacts];
+            const newContact = this.contacts.find(c => c.phone === phone);
+            if (newContact) {
+              this.onContactSelect(newContact);
+            }
+            this.handleNewTextModal(false);
+            this.cd.detectChanges();
+          });
         },
-        is_selected: true,
-        hasUnread: false,
-      };
-
-      this.onContactSelect(tempContact);
+        error: (err) => {
+          this.isCreatingContact = false;
+          this.errorMessage = err.error?.error || 'Failed to create contact';
+        }
+      });
     }
-
-    this.handleNewTextModal(false);
-    //TODO REFRESH CONTACTS LIST
   }
 
   handlePhoneCallModal(isOpen: boolean) {

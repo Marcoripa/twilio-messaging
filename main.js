@@ -13,9 +13,9 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: false, // Don't show until ready
     icon: path.join(app.getAppPath(), 'public/favicon.ico'),
     webPreferences: {
-      // Points to a preload script if you need to bridge Node APIs to Angular
       preload: path.join(app.getAppPath(), 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
@@ -23,19 +23,20 @@ function createWindow() {
   });
 
   const isPackaged = app.isPackaged;
-
-  // In Dev: dist/twilio-messaging/browser/index.html
-  // In Prod: browser/index.html (because of the mapping above)
   const indexPath = isPackaged
     ? path.join(__dirname, 'browser/index.html')
     : path.join(__dirname, 'dist/twilio-messaging/browser/index.html');
 
   mainWindow.loadFile(indexPath).catch((err) => {
-    // If it fails, this will tell us exactly where it looked
-    console.error('Path attempted:', indexPath);
-    console.error('Error:', err);
+    console.error('Failed to load index.html:', indexPath, err);
   });
 
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+    if (!isPackaged) {
+      mainWindow.webContents.openDevTools();
+    }
+  });
 
   mainWindow.on('closed', function () {
     mainWindow = null;
@@ -44,9 +45,17 @@ function createWindow() {
 
 
 app.on('ready', () => {
-  expressApp.listen(PORT, () => {
-    console.log(`Express server running on http://localhost:${PORT}`);
-  });
+  try {
+    const server = expressApp.listen(PORT, () => {
+      console.log(`[Electron] Express server running on http://localhost:${PORT}`);
+    });
+
+    server.on('error', (err) => {
+      console.error('[Electron] Server failed to start:', err);
+    });
+  } catch (err) {
+    console.error('[Electron] Fatal server error:', err);
+  }
 
   createWindow();
 });

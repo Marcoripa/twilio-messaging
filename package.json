@@ -12,7 +12,8 @@
     "electron:dev": "electron .",
     "build:electron": "ng build && electron-builder",
     "build:electron-mac": "ng build && electron-builder --mac --universal",
-    "build:electron-linux": "ng build && electron-builder --linux"
+    "build:electron-linux": "ng build && electron-builder --linux",
+    "build:electron-win": "ng build && electron-builder --win --portable"
   },
   "prettier": {
     "printWidth": 100,

@@ -1,100 +1,121 @@
-# TWILIO-MESSAGING
+# Twilio Messaging - Desktop Application
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.0.4.
+A cross-platform desktop application built with **Angular**, **Electron**, **Twilio**, and **Airtable**. It provides a real-time chat interface for managing SMS conversations.
 
-## Development server
-Before running the show, dont forget to update the environmental variables.
-- For the frontend, update src/environment.ts:
-    - apiUrl:  'http://localhost:5000/api', for local development and desktop app
-    - apiUrl: '/api', for deploying onto Firebase
-- For the backend, update .env
-    - PRODUCTION = local for local development
-    - PRODUCTION = firebase for deploying onto Firebase
-    - PRODUCTION = desktop for deploying as a desktop app (with Electron)
+## 🚀 Key Features
+- **Real-time Chat**: Integrated with Twilio Conversations SDK.
+- **Contact Management**: Synced with Airtable.
+- **SMS History**: Merges Twilio Conversations with historical SMS logs.
+- **Desktop Ready**: Built with Electron for Linux, Windows, and macOS.
+- **Firebase Auth**: Secure login via Firebase Authentication.
 
-Install node dependencies with: 
+---
+
+## 🛠 Prerequisites
+- **Node.js**: v18 or higher (v20+ recommended).
+- **Twilio Account**: 
+  - Account SID and Auth Token.
+  - API Key and Secret (for Chat Tokens).
+  - A Twilio Phone Number.
+  - A Conversations Service SID.
+- **Airtable Account**:
+  - Personal Access Token (PAT).
+  - Base ID and Table ID.
+  - Required fields: `First Name`, `Last Name`, `Phone`, `Conversation_SID`.
+- **Firebase Account**:
+  - A Firebase project for Authentication.
+
+---
+
+## ⚙️ Setup Instructions
+
+### 1. Clone & Install
 ```bash
 npm install
 ```
 
-To start a local development server, make sure you have the Angular cli and the twilio sdk:
+### 2. Configuration
+Create a `.env` file in the root directory (use `.env.example` as a template):
+```env
+PRODUCTION=desktop
+PORT=5001
 
-```bash
-npm install -g @angular/cli
-npm install --save @twilio/conversations
+AIRTABLE_BASE_ID=your_base_id
+AIRTABLE_TABLE_ID=your_table_id
+AIRTABLE_TOKEN=your_pat_token
+
+TWILIO_ACCOUNT_ID=your_account_sid
+TWILIO_AUTH_TOKEN=your_auth_token
+TWILIO_API_KEY=your_api_key
+TWILIO_API_SECRET=your_api_secret
+TWILIO_APP_SID=your_voice_app_sid
+TWILIO_CONVERSATIONS_SERVICE_SID=your_service_sid
+TWILIO_PHONE=+1234567890
+TWILIO_IDENTITY=desktop_user
 ```
 
-
-Then run with:
-
-```bash
-ng serve
+Update `src/environment.ts` (if needed):
+```typescript
+export const environment = {
+    apiUrl: 'http://localhost:5001/api',
+    twilio_Phone: '+1234567890'
+};
 ```
 
-To start the development backend run:
+---
 
+## 💻 Development
+
+### Start Angular Dev Server
+```bash
+npm start
+```
+
+### Start Express Backend (Separate process for dev)
 ```bash
 node server/index.js
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Deploy as Desktop app with Electron
-
-
-Ensure the frontend is built:
-```bash
-ng build
-```
-
-- Windows:
-run a development environment with 
+### Run Electron in Dev Mode
 ```bash
 npm run electron:dev
 ```
-build and start desktop Electron app with:
-```bash
-npm run build:electron
-```
 
-- Linux:
-ensure chrome-sandbox has the right permissions:
+---
+
+## 📦 Build & Release
+
+### Windows
+```bash
+npm run build:electron-win
+```
+*Creates a portable `.exe` in the `release/` folder.*
+
+### Linux
+First, fix sandbox permissions if needed:
 ```bash
 sudo chown root node_modules/electron/dist/chrome-sandbox
 sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
 ```
-
-build and start desktop Electron app with:
+Build:
 ```bash
 npm run build:electron-linux
 ```
+*Creates an `.AppImage` or `.deb` in the `release/` folder.*
 
-- Mac:
-
-build and start desktop Electron app with:
+### macOS
 ```bash
 npm run build:electron-mac
 ```
+*Creates a `.dmg` or `.zip` in the `release/` folder.*
 
-run a development environment with 
-```bash
-npm run electron:dev
-```
+---
 
-## Deploy on Firebase
+## 🔧 Technical Details & Optimization
+- **TwilioService**: Optimized with listener management to prevent memory leaks and de-duplication logic for consistent message history.
+- **Express Backend**: Securely handles Airtable sync and Twilio token generation.
+- **Electron**: Configured with `contextIsolation` and `preload` scripts for maximum security.
+- **Airtable**: Automatically saves new conversations and maps contacts to phone numbers.
 
-First things first: build the frontend. This will create a folder named dist
-
-```bash
-ng build
-```
-
-In order to deploy on firebase, you must use the file functions/index.js
-
-Next, deploy onto firebase with:
-
-```bash
-firebase deploy
-```
-Firebase/Google saves the secrets here: https://console.cloud.google.com/security/secret-manager?project=twilio-messaging-8183c 
-
+## 📄 License
+Private Project - All rights reserved.

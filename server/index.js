@@ -34,6 +34,39 @@ const twilioIdentity = process.env.TWILIO_IDENTITY || 'browser_user';
 const client = twilio(twilioAccountId, twilioAuthToken);
 
 /**
+ * Phone Formatter Helper: Standardize to E.164 (+61...)
+ */
+function formatPhone(phone) {
+  if (!phone) return '';
+  
+  // Replace leading 00 with +
+  let p = phone.trim();
+  if (p.startsWith('00')) {
+    p = '+' + p.substring(2);
+  }
+  
+  // Remove all non-digit characters except a leading +
+  let cleaned = p.replace(/(?!^\+)\D/g, '');
+  
+  // If it's a local AU number starting with 0
+  if (cleaned.startsWith('0') && !cleaned.startsWith('00')) {
+    return '+61' + cleaned.substring(1);
+  }
+  
+  // If it starts with 61 but no +, add it
+  if (cleaned.startsWith('61') && !cleaned.startsWith('+')) {
+    return '+' + cleaned;
+  }
+  
+  // If no prefix, assume it needs +61
+  if (!cleaned.startsWith('+')) {
+    return '+61' + cleaned;
+  }
+  
+  return cleaned;
+}
+
+/**
  * Airtable Helper: Fetch all contacts (handles pagination)
  */
 async function fetchAirtableContacts() {
@@ -65,15 +98,18 @@ async function fetchAirtableContacts() {
   return Object.fromEntries(
     allRecords
       .filter(r => r.fields?.Phone)
-      .map(r => [
-        r.fields.Phone,
-        {
-          id: r.id,
-          conversation_sid: r.fields['Conversation_SID'] ?? '',
-          createdTime: r.createdTime,
-          fields: r.fields,
-        }
-      ])
+      .map(r => {
+        const formatted = formatPhone(r.fields.Phone);
+        return [
+          formatted,
+          {
+            id: r.id,
+            conversation_sid: r.fields['Conversation_SID'] ?? '',
+            createdTime: r.createdTime,
+            fields: { ...r.fields, Phone: formatted },
+          }
+        ];
+      })
   );
 }
 
@@ -81,11 +117,13 @@ async function fetchAirtableContacts() {
  * Twilio Helper: Start or find a conversation
  */
 async function startTwilioChat(recipientPhone) {
-  console.log(`[Twilio] Starting/Finding chat for: ${recipientPhone}`);
+  const formattedPhone = formatPhone(recipientPhone);
+  console.log(`[Twilio] Starting/Finding chat for: ${formattedPhone} (original: ${recipientPhone})`);
+  
   try {
     // 1. Check for existing conversation with this participant
     const participantConversations = await client.conversations.v1.participantConversations
-      .list({ address: recipientPhone, limit: 1 });
+      .list({ address: formattedPhone, limit: 1 });
 
     if (participantConversations.length > 0) {
       console.log(`[Twilio] Found existing conversation: ${participantConversations[0].conversationSid}`);
@@ -94,12 +132,12 @@ async function startTwilioChat(recipientPhone) {
 
     // 2. Create new conversation
     const conversation = await client.conversations.v1.conversations.create({
-      friendlyName: `Chat with ${recipientPhone}`,
+      friendlyName: `Chat with ${formattedPhone}`,
     });
 
     // 3. Add SMS participant
     await client.conversations.v1.conversations(conversation.sid).participants.create({
-      'messagingBinding.address': recipientPhone,
+      'messagingBinding.address': formattedPhone,
       'messagingBinding.proxyAddress': twilioPhone,
     });
 
@@ -161,8 +199,10 @@ app.post('/api/create_conversation', async (req, res) => {
   const { name, phone } = req.body;
   if (!phone) return res.status(400).json({ error: 'Phone number is required' });
 
+  const formattedPhone = formatPhone(phone);
+
   try {
-    const conversationSid = await startTwilioChat(phone);
+    const conversationSid = await startTwilioChat(formattedPhone);
     
     // Update Airtable if a name was provided
     if (name && conversationSid) {
@@ -170,7 +210,7 @@ app.post('/api/create_conversation', async (req, res) => {
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
 
-      console.log(`Saving new contact ${firstName} ${lastName}; Phone: ${phone}`);
+      console.log(`Saving new contact ${firstName} ${lastName}; Phone: ${formattedPhone}`);
 
       const response = await fetch(`https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}`, {
         method: 'POST',
@@ -183,8 +223,9 @@ app.post('/api/create_conversation', async (req, res) => {
             fields: {
               'First Name': firstName,
               'Last Name': lastName,
-              'Phone': phone,
-              'Conversation_SID': conversationSid
+              'Phone': formattedPhone,
+              'Conversation_SID': conversationSid,
+              'Name': name
             }
           }]
         })
@@ -221,10 +262,12 @@ app.get('/api/messages', async (req, res) => {
   const { phone } = req.query;
   if (!phone) return res.status(400).json({ error: 'Phone is required' });
 
+  const formattedPhone = formatPhone(phone);
+
   try {
     const [sent, received] = await Promise.all([
-      client.messages.list({ from: phone, limit: 50 }),
-      client.messages.list({ to: phone, limit: 50 })
+      client.messages.list({ from: formattedPhone, limit: 50 }),
+      client.messages.list({ to: formattedPhone, limit: 50 })
     ]);
     res.json([...sent, ...received]);
   } catch (err) {
@@ -254,4 +297,3 @@ if (PRODUCTION === 'desktop') {
     console.log(`[Server] Running on http://localhost:${PORT}`);
   });
 }
-

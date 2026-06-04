@@ -107,7 +107,12 @@ npm run build:electron-linux
 ```bash
 npm run build:electron-mac
 ```
+
 *Creates a `.dmg` or `.zip` in the `release/` folder.*
+
+``` codesign --force --deep -s - release/mac-universal/TwilioMessaging.app ```
+
+
 
 ---
 

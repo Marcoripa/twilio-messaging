@@ -21,26 +21,50 @@
           class="w-full bg-transparent outline-none text-gray-800"
         />
 
-        <button
-          (click)="handleNewTextModal(true)"
-          class="cursor-pointer w-6 h-6 flex items-center justify-center rounded-full bg-blue-500 hover:bg-blue-600 text-white text-2xl shadow-md hover:shadow-lg transition-all duration-200"
-          title="New Text"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+        <div class="flex items-center gap-2 ml-2">
+          <button
+            (click)="refreshContacts()"
+            class="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 text-gray-600 transition-all duration-200"
+            [class.animate-spin]="isRefreshing"
+            title="Refresh Contacts"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+          </button>
+
+          <button
+            (click)="handleNewTextModal(true)"
+            class="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-md hover:shadow-lg transition-all duration-200"
+            title="New Text"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -166,53 +190,64 @@
 
         <!-- Messages -->
         <div class="flex-1 min-h-0 p-4 overflow-y-auto space-y-3 flex flex-col messages">
-          <div class="flex flex-col gap-2 h-full" *ngIf="messages$ | async as messages">
-            <ng-container *ngIf="messages.length > 0; else noMessages">
-              <div
-                *ngFor="let msg of messages"
-                class="flex"
-                [ngClass]="{
-                  'justify-end': msg.author === 'system',
-                  'justify-start': msg.author !== 'system',
-                }"
-              >
-                <div
-                  class="max-w-xs rounded-xl px-4 py-2 break-words"
-                  [ngClass]="{
-                    'bg-green-200 text-black rounded-tr-none': msg.author === 'system',
-                    'bg-white text-gray-800 rounded-tl-none': msg.author !== 'system',
-                  }"
-                >
-                  <div class="text-sm">{{ msg.body }}</div>
+          <div class="flex flex-col gap-2 h-full">
+            <ng-container *ngIf="!isLoadingMessages; else loadingChat">
+              <div class="flex flex-col gap-2 h-full" *ngIf="messages$ | async as messages">
+                <ng-container *ngIf="messages.length > 0; else noMessages">
+                  <div
+                    *ngFor="let msg of messages"
+                    class="flex"
+                    [ngClass]="{
+                      'justify-end': msg.author === 'system',
+                      'justify-start': msg.author !== 'system',
+                    }"
+                  >
+                    <div
+                      class="max-w-xs rounded-xl px-4 py-2 break-words"
+                      [ngClass]="{
+                        'bg-green-200 text-black rounded-tr-none': msg.author === 'system',
+                        'bg-white text-gray-800 rounded-tl-none': msg.author !== 'system',
+                      }"
+                    >
+                      <div class="text-sm">{{ msg.body }}</div>
 
-                  <div class="text-xs text-gray-500 mt-1 text-right">
-                    <span *ngIf="!isToday(msg.dateCreated)">
-                      {{ msg.dateCreated | date: 'MMM d' }}
-                    </span>
-                    {{ msg.dateCreated | date: 'shortTime' }}
+                      <div class="text-xs text-gray-500 mt-1 text-right">
+                        <span *ngIf="!isToday(msg.dateCreated)">
+                          {{ msg.dateCreated | date: 'MMM d' }}
+                        </span>
+                        {{ msg.dateCreated | date: 'shortTime' }}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </ng-container>
+
+                <ng-template #noMessages>
+                  <div class="flex-1 flex flex-col items-center justify-center text-gray-400 space-y-2">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-12 w-12 opacity-20"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                      />
+                    </svg>
+                    <p class="text-lg font-medium">No messages yet</p>
+                    <p class="text-sm">Start the conversation by sending a text below.</p>
+                  </div>
+                </ng-template>
               </div>
             </ng-container>
 
-            <ng-template #noMessages>
-              <div class="flex-1 flex flex-col items-center justify-center text-gray-400 space-y-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  class="h-12 w-12 opacity-20"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    stroke-width="2"
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                  />
-                </svg>
-                <p class="text-lg font-medium">No messages yet</p>
-                <p class="text-sm">Start the conversation by sending a text below.</p>
+            <ng-template #loadingChat>
+              <div class="flex-1 flex flex-col items-center justify-center text-gray-500 space-y-3">
+                <div class="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent"></div>
+                <p class="text-lg font-medium animate-pulse">Loading conversation...</p>
               </div>
             </ng-template>
           </div>

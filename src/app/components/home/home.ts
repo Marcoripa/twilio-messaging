@@ -33,6 +33,7 @@ export class Home {
   isRefreshing = false;
   isLoadingMessages = false;
   errorMessage: string | null = null;
+  private lastSelectionId = 0;
 
   constructor(
     private contactService: ContactService,
@@ -219,6 +220,7 @@ export class Home {
   }
 
   async onContactSelect(contact: Contact) {
+    const selectionId = ++this.lastSelectionId;
     this.filteredContacts.forEach((filteredContact) => (filteredContact.is_selected = false));
     this.errorMessage = null;
     this.isLoadingMessages = true;
@@ -237,42 +239,43 @@ export class Home {
         console.warn('No conversation SID for this contact');
         const existingConv = await this.twilioService.findConversationByPhone(contact.phone);
 
+        if (selectionId !== this.lastSelectionId) return;
+
         if (existingConv) {
           await this.twilioService.openConversation(existingConv.sid, contact.phone);
           contact.contact.conversation_sid = existingConv.sid;
         } else {
           console.warn('No conversation found for this phone number');
           this.isCreatingContact = true;
-          this.contactService.startChat(contact.contact.fields.Name, contact.phone).subscribe({
-            next: async (sid: string) => {
-              this.isCreatingContact = false;
-              console.log('Received SID:', sid);
-              if (sid) {
-                contact.contact.conversation_sid = sid;
-                await this.twilioService.openConversation(sid, contact.phone);
-              }
-              this.isLoadingMessages = false;
-              this.cd.detectChanges();
-            },
-            error: (err) => {
-              this.isCreatingContact = false;
-              this.isLoadingMessages = false;
-              this.errorMessage = err.error?.error || 'Failed to start conversation';
-              console.error('Failed to get SID:', err);
-              this.cd.detectChanges();
-            },
-          });
-          return;
+          try {
+            const sid = await firstValueFrom(this.contactService.startChat(contact.contact.fields.Name, contact.phone));
+            if (selectionId !== this.lastSelectionId) return;
+            
+            this.isCreatingContact = false;
+            console.log('Received SID:', sid);
+            if (sid) {
+              contact.contact.conversation_sid = sid;
+              await this.twilioService.openConversation(sid, contact.phone);
+            }
+          } catch (err: any) {
+            if (selectionId !== this.lastSelectionId) return;
+            this.isCreatingContact = false;
+            this.errorMessage = err.error?.error || 'Failed to start conversation';
+            console.error('Failed to get SID:', err);
+          }
         }
       } else if (conversationSid) {
         await this.twilioService.openConversation(conversationSid, contact.phone);
       }
     } catch (err) {
+      if (selectionId !== this.lastSelectionId) return;
       console.error('Error selecting contact:', err);
       this.errorMessage = 'Failed to load conversation';
     } finally {
-      this.isLoadingMessages = false;
-      this.cd.detectChanges();
+      if (selectionId === this.lastSelectionId) {
+        this.isLoadingMessages = false;
+        this.cd.detectChanges();
+      }
     }
   }
 

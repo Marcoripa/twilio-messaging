@@ -19,6 +19,7 @@ export class TwilioService {
   public unreadCounts$ = this.unreadCounts.asObservable();
   private messageEvents = new BehaviorSubject<{ sid: string, author: string | null } | null>(null);
   public messageEvents$ = this.messageEvents.asObservable();
+  private activeConversationSid: string | null = null;
   
 
   getAccessToken(): Observable<{ token: string }> {
@@ -112,22 +113,31 @@ export class TwilioService {
     console.log(`[TwilioService] Opening conversation: ${phoneNumber}, sid: ${conversationSid}`);
     if (!this.client) return;
 
+    // 0. Track this as the latest request and clear current state
+    this.activeConversationSid = conversationSid;
+    this.messagesSubject.next([]);
+    this.conversation = undefined; // Temporarily unset to avoid mixing messages until ready
+
     // 1. Get the conversation object
     const conversation =
       this.conversations.get(conversationSid) ||
       await this.client.getConversationBySid(conversationSid);
+
+    if (this.activeConversationSid !== conversationSid) return;
 
     this.conversations.set(conversationSid, conversation);
     this.conversation = conversation; // Mark as currently active
 
     // 2. Fetch messages from Twilio Conversations
     const paginator = await conversation.getMessages();
+    if (this.activeConversationSid !== conversationSid) return;
     const conversationMessages = paginator.items;
 
     // 3. Fetch historical messages from SMS API
     let apiMessages: any[] = [];
     try {
       const res = await fetch(`${environment.apiUrl}/messages?phone=${phoneNumber}`);
+      if (this.activeConversationSid !== conversationSid) return;
       if (res.ok) {
         apiMessages = await res.json();
       }
@@ -135,17 +145,22 @@ export class TwilioService {
       console.warn('Failed to fetch messages API', err);
     }
 
+    if (this.activeConversationSid !== conversationSid) return;
+
     // 4. Merge and de-duplicate
+    // We include current messagesSubject.value in case any real-time messages arrived while fetching history
     const merged = [
       ...conversationMessages.map(m => this.normalizeMessage(m, 'conversation')),
-      ...apiMessages.map(m => this.normalizeMessage(m, 'messages-api'))
+      ...apiMessages.map(m => this.normalizeMessage(m, 'messages-api')),
+      ...this.messagesSubject.value
     ].sort((a, b) => a.dateCreated.getTime() - b.dateCreated.getTime());
 
     const deduped: ChatMessage[] = [];
     for (const msg of merged) {
       const isDuplicate = deduped.some(existing => 
-        existing.body === msg.body && 
-        Math.abs(existing.dateCreated.getTime() - msg.dateCreated.getTime()) < 2000
+        (existing.sid && msg.sid && existing.sid === msg.sid) ||
+        (existing.body === msg.body && 
+         Math.abs(existing.dateCreated.getTime() - msg.dateCreated.getTime()) < 2000)
       );
       if (!isDuplicate) deduped.push(msg);
     }
@@ -155,6 +170,7 @@ export class TwilioService {
     // 5. Mark as read
     try {
       await conversation.setAllMessagesRead();
+      if (this.activeConversationSid !== conversationSid) return;
       const counts = { ...this.unreadCounts.value };
       counts[conversationSid] = 0;
       this.unreadCounts.next(counts);

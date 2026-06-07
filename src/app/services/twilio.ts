@@ -58,7 +58,7 @@ export class TwilioService {
               
               const lastIndex = conv.lastMessage?.index;
               const lastReadIndex = conv.lastReadMessageIndex;
-              const lastAuthor = conv.lastMessage?.author;
+              const lastAuthor = (conv.lastMessage as any)?.author;
               
               if (lastIndex !== undefined && lastIndex !== null && lastAuthor !== this.client?.user?.identity) {
                 const readIndex = lastReadIndex ?? -1;

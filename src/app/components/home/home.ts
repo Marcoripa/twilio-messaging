@@ -212,7 +212,7 @@ export class Home {
 
       const lastIndex = conv?.lastMessage?.index;
       const lastReadIndex = conv?.lastReadMessageIndex;
-      const lastAuthor = conv?.lastMessage?.author;
+      const lastAuthor = (conv?.lastMessage as any)?.author;
 
       // Fix: Improved unread detection (handles null lastReadIndex and checks author)
       const hasUnread = 
@@ -235,14 +235,15 @@ export class Home {
 
     // Notify about missed messages on startup
     if (unreadCount > 0 && firstUnreadContact) {
-      const summaryContact = unreadCount === 1 ? firstUnreadContact : {
-        ...firstUnreadContact,
+      const unreadContact = firstUnreadContact as Contact;
+      const summaryContact: Contact = unreadCount === 1 ? unreadContact : {
+        ...unreadContact,
         contact: {
-          ...firstUnreadContact.contact,
-          fields: { ...firstUnreadContact.contact.fields, Name: `${unreadCount} contacts` }
+          ...unreadContact.contact,
+          fields: { ...unreadContact.contact.fields, Name: `${unreadCount} contacts` }
         }
       };
-      this.showNativeNotification(summaryContact as Contact, true);
+      this.showNativeNotification(summaryContact, true);
     }
 
 

@@ -228,7 +228,7 @@ export class Home {
 
       return {
         ...contactObj,
-        lastActivity: conv?.lastMessage?.dateCreated || null,
+        lastActivity: conv?.lastMessage?.dateCreated || contactObj.contact.createdTime || null,
         hasUnread: hasUnread,
       };
     });
@@ -426,9 +426,9 @@ export class Home {
         next: (sid) => {
           this.isCreatingContact = false;
           // Refresh contacts to include the new one
-          this.contactService.getAll().subscribe(updatedContacts => {
+          this.contactService.getAll().subscribe(async updatedContacts => {
             this.contacts = [...updatedContacts];
-            this.filteredContacts = [...updatedContacts];
+            await this.sortContactsByConversationActivity();
             const newContact = this.contacts.find(c => c.phone === phone);
             if (newContact) {
               this.onContactSelect(newContact);

@@ -122,10 +122,17 @@ export class TwilioService {
     });
   }
 
-  async getSubscribedConversations() {
+  async getSubscribedConversations(): Promise<Conversation[]> {
     if (!this.client) return [];
-    const paginator = await this.client.getSubscribedConversations();
-    return paginator.items;
+    let paginator = await this.client.getSubscribedConversations();
+    const conversations = [...paginator.items];
+    
+    while (paginator.hasNextPage) {
+      paginator = await paginator.nextPage();
+      conversations.push(...paginator.items);
+    }
+    
+    return conversations;
   }
 
   async openConversation(conversationSid: string, phoneNumber: string) {

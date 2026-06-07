@@ -46,6 +46,11 @@ export class Home {
 
   async ngOnInit() {
     try {
+      // 0. Request notification permission
+      if ('Notification' in window && Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+
       // 1. Upload contacts from server and wait for it
       const serverContacts = await firstValueFrom(this.contactService.getAll());
       this.contacts = [...serverContacts];
@@ -113,13 +118,20 @@ export class Home {
     const contact = this.contacts[index];
     const isCurrentlyOpen = activeSid === conversationSid;
     
+    const wasUnread = contact.hasUnread;
+    const nowUnread = contact.hasUnread || (!!isExternal && !isCurrentlyOpen);
+
     this.contacts[index] = {
       ...contact,
       lastActivity: new Date(),
-      // Set unread if: it was already unread OR (it's external AND not the currently open chat)
-      hasUnread: contact.hasUnread || (!!isExternal && !isCurrentlyOpen),
+      hasUnread: nowUnread,
     };
     
+    // 3b. Show native notification if it's a new external unread message
+    if (isExternal && !isCurrentlyOpen && !wasUnread) {
+      this.showNativeNotification(contact);
+    }
+
     console.log(`[Home] Contact updated: ${this.contacts[index].phone}, hasUnread: ${this.contacts[index].hasUnread}`);
 
     // 4. Move to top of the master list
@@ -137,6 +149,25 @@ export class Home {
     // 6. Force UI refresh
     this.cd.detectChanges();
     console.log(`[Home] UI Update completed for real-time message`);
+  }
+
+  private showNativeNotification(contact: Contact, isStartup = false) {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+    const title = isStartup ? 'Missed Messages' : `New message from ${this.getContactLabel(contact)}`;
+    const body = isStartup 
+      ? `You have unread messages from ${this.getContactLabel(contact)}.` 
+      : `Check your chat with ${this.getContactLabel(contact)}.`;
+
+    const notification = new Notification(title, {
+      body,
+      icon: 'favicon.ico'
+    });
+
+    notification.onclick = () => {
+      window.focus();
+      this.onContactSelect(contact);
+    };
   }
 
   moveContactToTop(conversationSid: string) {
@@ -170,15 +201,30 @@ export class Home {
 
   async sortContactsByConversationActivity() {
     const conversations = await this.twilioService.getSubscribedConversations();
+    const myIdentity = this.twilioService.getIdentity();
 
     const conversationMap = new Map(conversations.map((c) => [c.sid, c]));
+    let unreadCount = 0;
+    let firstUnreadContact: Contact | null = null;
 
     this.contacts = this.contacts.map((contactObj) => {
       const conv = conversationMap.get(contactObj.contact.conversation_sid);
 
-      const lastIndex = conv?.lastMessage?.index ?? 0;
-      const lastReadIndex = conv?.lastReadMessageIndex ?? 0;
-      const hasUnread = lastIndex > lastReadIndex;
+      const lastIndex = conv?.lastMessage?.index;
+      const lastReadIndex = conv?.lastReadMessageIndex;
+      const lastAuthor = conv?.lastMessage?.author;
+
+      // Fix: Improved unread detection (handles null lastReadIndex and checks author)
+      const hasUnread = 
+        lastIndex !== undefined && 
+        lastIndex !== null && 
+        lastAuthor !== myIdentity &&
+        (lastReadIndex === undefined || lastReadIndex === null || lastIndex > lastReadIndex);
+
+      if (hasUnread) {
+        unreadCount++;
+        if (!firstUnreadContact) firstUnreadContact = contactObj;
+      }
 
       return {
         ...contactObj,
@@ -186,6 +232,19 @@ export class Home {
         hasUnread: hasUnread,
       };
     });
+
+    // Notify about missed messages on startup
+    if (unreadCount > 0 && firstUnreadContact) {
+      const summaryContact = unreadCount === 1 ? firstUnreadContact : {
+        ...firstUnreadContact,
+        contact: {
+          ...firstUnreadContact.contact,
+          fields: { ...firstUnreadContact.contact.fields, Name: `${unreadCount} contacts` }
+        }
+      };
+      this.showNativeNotification(summaryContact as Contact, true);
+    }
+
 
     // 2. Ordiniamo i contatti usando la nuova proprietà lastActivity
     this.contacts.sort((a, b) => {

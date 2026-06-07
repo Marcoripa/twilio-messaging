@@ -43,64 +43,83 @@ export class TwilioService {
 
   async initialize(token: string) {
     console.log('[TwilioService] Initializing with token...');
-    try {
-      this.client = new Client(token);
+    return new Promise<void>((resolve, reject) => {
+      try {
+        this.client = new Client(token);
 
-      this.client.on('stateChanged', (state) => {
-        console.log(`[TwilioService] Client state changed: ${state}`);
-      });
-
-      this.client.on('connectionStateChanged', (state) => {
-        console.log(`[TwilioService] Connection state: ${state}`);
-      });
-
-      // SINGLE GLOBAL LISTENER for all messages
-      this.client.on("messageAdded", (message: Message) => {
-        console.log(`[TwilioService] GLOBAL messageAdded: conv=${message.conversation.sid}, author=${message.author}`);
-        
-        this.zone.run(() => {
-          const sid = message.conversation.sid;
-
-          // 1. Notify listeners for sidebar updates (move to top, unread dots)
-          this.messageEvents.next({ sid, author: message.author ?? 'system' });
-
-          // 2. If this is the ACTIVE conversation, update the messages stream
-          if (this.conversation?.sid === sid) {
-            console.log(`[TwilioService] Updating active conversation messages for ${sid}`);
-            const normalized = this.normalizeMessage(message, 'conversation');
-            const current = this.messagesSubject.value;
-
-            const isDuplicate = current.some(existing => 
-              existing.body === normalized.body && 
-              Math.abs(existing.dateCreated.getTime() - normalized.dateCreated.getTime()) < 2000
-            );
-
-            if (!isDuplicate) {
-              this.messagesSubject.next([...current, normalized].sort(
-                (a, b) => a.dateCreated.getTime() - b.dateCreated.getTime()
-              ));
-            }
-          }
-
-          // 3. Update unread counts if not from me
-          if (message.author !== this.client?.user?.identity) {
-            const counts = { ...this.unreadCounts.value };
-            counts[sid] = (counts[sid] || 0) + 1;
-            this.unreadCounts.next(counts);
+        this.client.on('stateChanged', async (state) => {
+          console.log(`[TwilioService] Client state changed: ${state}`);
+          if (state === 'initialized') {
+            const paginator = await this.client!.getSubscribedConversations();
+            const initialCounts: Record<string, number> = {};
+            
+            paginator.items.forEach((conv: Conversation) => {
+              this.conversations.set(conv.sid, conv);
+              
+              const lastIndex = conv.lastMessage?.index;
+              const lastReadIndex = conv.lastReadMessageIndex;
+              const lastAuthor = conv.lastMessage?.author;
+              
+              if (lastIndex !== undefined && lastIndex !== null && lastAuthor !== this.client?.user?.identity) {
+                const readIndex = lastReadIndex ?? -1;
+                if (lastIndex > readIndex) {
+                  initialCounts[conv.sid] = lastIndex - readIndex;
+                }
+              }
+            });
+            
+            this.unreadCounts.next(initialCounts);
+            console.log('[TwilioService] Initialization complete and synced.');
+            resolve();
           }
         });
-      });
 
-      const paginator = await this.client.getSubscribedConversations();
-      paginator.items.forEach((conv: Conversation) => {
-        this.conversations.set(conv.sid, conv);
-      });
-      
-      console.log('[TwilioService] Initialization complete.');
+        this.client.on('connectionStateChanged', (state) => {
+          console.log(`[TwilioService] Connection state: ${state}`);
+        });
 
-    } catch (error) {
-      console.error("[TwilioService] Initialization Error:", error);
-    }
+        // SINGLE GLOBAL LISTENER for all messages
+        this.client.on("messageAdded", (message: Message) => {
+          console.log(`[TwilioService] GLOBAL messageAdded: conv=${message.conversation.sid}, author=${message.author}`);
+          
+          this.zone.run(() => {
+            const sid = message.conversation.sid;
+
+            // 1. Notify listeners for sidebar updates (move to top, unread dots)
+            this.messageEvents.next({ sid, author: message.author ?? 'system' });
+
+            // 2. If this is the ACTIVE conversation, update the messages stream
+            if (this.conversation?.sid === sid) {
+              console.log(`[TwilioService] Updating active conversation messages for ${sid}`);
+              const normalized = this.normalizeMessage(message, 'conversation');
+              const current = this.messagesSubject.value;
+
+              const isDuplicate = current.some(existing => 
+                existing.body === normalized.body && 
+                Math.abs(existing.dateCreated.getTime() - normalized.dateCreated.getTime()) < 2000
+              );
+
+              if (!isDuplicate) {
+                this.messagesSubject.next([...current, normalized].sort(
+                  (a, b) => a.dateCreated.getTime() - b.dateCreated.getTime()
+                ));
+              }
+            }
+
+            // 3. Update unread counts if not from me
+            if (message.author !== this.client?.user?.identity) {
+              const counts = { ...this.unreadCounts.value };
+              counts[sid] = (counts[sid] || 0) + 1;
+              this.unreadCounts.next(counts);
+            }
+          });
+        });
+
+      } catch (error) {
+        console.error("[TwilioService] Initialization Error:", error);
+        reject(error);
+      }
+    });
   }
 
   async getSubscribedConversations() {

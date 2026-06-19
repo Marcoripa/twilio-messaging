@@ -17,7 +17,7 @@ export class TwilioService {
   public messages$ = this.messagesSubject.asObservable();
   private unreadCounts = new BehaviorSubject<Record<string, number>>({});
   public unreadCounts$ = this.unreadCounts.asObservable();
-  private messageEvents = new BehaviorSubject<{ sid: string, author: string | null } | null>(null);
+  private messageEvents = new BehaviorSubject<{ sid: string, author: string | null, dateCreated?: Date } | null>(null);
   public messageEvents$ = this.messageEvents.asObservable();
   private activeConversationSid: string | null = null;
   
@@ -43,6 +43,25 @@ export class TwilioService {
 
   async initialize(token: string) {
     console.log('[TwilioService] Initializing with token...');
+    
+    // Clean up existing client to prevent duplicate event handlers and socket connections
+    if (this.client) {
+      try {
+        console.log('[TwilioService] Shutting down existing client...');
+        await this.client.shutdown();
+      } catch (err) {
+        console.error('[TwilioService] Error shutting down client:', err);
+      }
+      this.client = undefined;
+    }
+
+    this.conversations.clear();
+    this.unreadCounts.next({});
+    this.messagesSubject.next([]);
+    this.messageEvents.next(null);
+    this.activeConversationSid = null;
+    this.conversation = undefined;
+
     return new Promise<void>((resolve, reject) => {
       try {
         this.client = new Client(token);
@@ -68,9 +87,15 @@ export class TwilioService {
               }
             });
             
-            this.unreadCounts.next(initialCounts);
-            console.log('[TwilioService] Initialization complete and synced.');
-            resolve();
+            this.zone.run(() => {
+              this.unreadCounts.next(initialCounts);
+              console.log('[TwilioService] Initialization complete and synced.');
+              resolve();
+            });
+          } else if (state === 'failed') {
+            this.zone.run(() => {
+              reject(new Error('Twilio Client initialization failed'));
+            });
           }
         });
 
@@ -78,15 +103,19 @@ export class TwilioService {
           console.log(`[TwilioService] Connection state: ${state}`);
         });
 
-        // SINGLE GLOBAL LISTENER for all messages
+        // Listen for new messages globally
         this.client.on("messageAdded", (message: Message) => {
           console.log(`[TwilioService] GLOBAL messageAdded: conv=${message.conversation.sid}, author=${message.author}`);
           
           this.zone.run(() => {
             const sid = message.conversation.sid;
 
-            // 1. Notify listeners for sidebar updates (move to top, unread dots)
-            this.messageEvents.next({ sid, author: message.author ?? 'system' });
+            // 1. Notify listeners for sidebar updates (move to top, unread dots, timestamp)
+            this.messageEvents.next({ 
+              sid, 
+              author: message.author ?? 'system',
+              dateCreated: message.dateCreated || new Date()
+            });
 
             // 2. If this is the ACTIVE conversation, update the messages stream
             if (this.conversation?.sid === sid) {
@@ -111,6 +140,47 @@ export class TwilioService {
               const counts = { ...this.unreadCounts.value };
               counts[sid] = (counts[sid] || 0) + 1;
               this.unreadCounts.next(counts);
+            }
+          });
+        });
+
+        // Listen for conversation joined/created
+        this.client.on('conversationJoined', (conversation) => {
+          this.zone.run(() => {
+            console.log(`[TwilioService] conversationJoined: sid=${conversation.sid}`);
+            this.conversations.set(conversation.sid, conversation);
+            
+            this.messageEvents.next({
+              sid: conversation.sid,
+              author: (conversation.lastMessage as any)?.author ?? null,
+              dateCreated: conversation.lastMessage?.dateCreated || new Date()
+            });
+          });
+        });
+
+        // Listen for conversation left/removed
+        this.client.on('conversationLeft', (conversation) => {
+          this.zone.run(() => {
+            console.log(`[TwilioService] conversationLeft: sid=${conversation.sid}`);
+            this.conversations.delete(conversation.sid);
+          });
+        });
+
+        // Listen for conversation updates (e.g., last message or unread states loading asynchronously)
+        this.client.on('conversationUpdated', (event) => {
+          this.zone.run(() => {
+            const conversation = event.conversation;
+            const reasons = event.updateReasons;
+            console.log(`[TwilioService] conversationUpdated: sid=${conversation.sid}, reasons=${reasons.join(', ')}`);
+            
+            this.conversations.set(conversation.sid, conversation);
+
+            if (reasons.includes('lastMessage') || reasons.includes('lastReadMessageIndex')) {
+              this.messageEvents.next({ 
+                sid: conversation.sid, 
+                author: (conversation.lastMessage as any)?.author ?? null,
+                dateCreated: conversation.lastMessage?.dateCreated || new Date()
+              });
             }
           });
         });
@@ -214,7 +284,8 @@ export class TwilioService {
       // Check if any participant identity or address matches the phone number
       const isMatch = participants.some(p => 
         p.identity === phoneNumber || 
-        (p.attributes as any)?.phoneNumber === phoneNumber
+        (p.attributes as any)?.phoneNumber === phoneNumber ||
+        (p as any).messagingBinding?.address === phoneNumber
       );
       
       if (isMatch) return conv;

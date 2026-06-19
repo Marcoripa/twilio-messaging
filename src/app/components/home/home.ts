@@ -1,10 +1,11 @@
-import { Component, ChangeDetectorRef } from '@angular/core';
+import { Component, ChangeDetectorRef, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Contact } from '../../shared/models/contact';
 import { ContactService } from '../../services/contact';
 import { TwilioService } from '../../services/twilio';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { Device, Call } from '@twilio/voice-sdk';
 import { environment } from '../../../environment';
 
@@ -15,7 +16,7 @@ import { environment } from '../../../environment';
   templateUrl: './home.html',
   styleUrls: ['./home.scss'],
 })
-export class Home {
+export class Home implements OnInit, OnDestroy {
   contacts: Contact[] = [];
   filteredContacts: Contact[] = [];
   searchTerm: string = '';
@@ -34,6 +35,8 @@ export class Home {
   isLoadingMessages = false;
   errorMessage: string | null = null;
   private lastSelectionId = 0;
+  private destroy$ = new Subject<void>();
+  private refreshTimer: any;
 
   constructor(
     private contactService: ContactService,
@@ -65,20 +68,37 @@ export class Home {
       await this.sortContactsByConversationActivity();
 
       // 4. Listen for new messages
-      this.twilioService.messageEvents$.subscribe(async (event) => {
-        if (!event) return;
-        console.log(`[Home] Received messageEvents notification for ${event.sid} by ${event.author}`);
-        await this.updateContactAndMoveToTop(event.sid, event.author);
-      });
+      this.twilioService.messageEvents$
+        .pipe(takeUntil(this.destroy$))
+        .subscribe(async (event) => {
+          if (!event) return;
+          console.log(`[Home] Received messageEvents notification for ${event.sid} by ${event.author}`);
+          await this.updateContactAndMoveToTop(event.sid, event.author, event.dateCreated);
+        });
 
       // 5. Auto-scroll when messages update
-      this.messages$.subscribe(() => {
-        this.scrollToBottom();
-      });
+      this.messages$
+        .pipe(takeUntil(this.destroy$))
+        .subscribe(() => {
+          this.scrollToBottom();
+        });
+
+      // 6. Set up a periodic timer to update relative time strings
+      this.refreshTimer = setInterval(() => {
+        this.cd.detectChanges();
+      }, 30000);
     } catch (err) {
       console.error('Inizializzazione fallita:', err);
     } finally {
       this.cd.detectChanges();
+    }
+  }
+
+  ngOnDestroy() {
+    this.destroy$.next();
+    this.destroy$.complete();
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer);
     }
   }
 
@@ -97,7 +117,7 @@ export class Home {
     }
   }
 
-  async updateContactAndMoveToTop(conversationSid: string, author: string | null = null) {
+  async updateContactAndMoveToTop(conversationSid: string, author: string | null = null, dateCreated?: Date) {
     console.log(`[Home] updateContactAndMoveToTop called for SID: ${conversationSid}, Author: ${author}`);
     
     // 1. Find the contact in the master list
@@ -123,7 +143,7 @@ export class Home {
 
     this.contacts[index] = {
       ...contact,
-      lastActivity: new Date(),
+      lastActivity: dateCreated || new Date(),
       hasUnread: nowUnread,
     };
     
@@ -335,6 +355,7 @@ export class Home {
       if (selectionId === this.lastSelectionId) {
         this.isLoadingMessages = false;
         this.cd.detectChanges();
+        this.scrollToBottom();
       }
     }
   }

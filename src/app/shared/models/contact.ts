@@ -9,6 +9,7 @@ export interface Contact {
       'Shoot Date'?: string;
       Phone: string;
       Email?: string;
+      Last_Interaction?: string;
     };
   };
   lastActivity?: Date | string | null;

@@ -29,4 +29,12 @@ export class ContactService {
       })
     );
   }
+
+  updateLastInteraction(phone: string, date: string, conversationSid?: string): Observable<any> {
+    return this.http.post(`${environment.apiUrl}/contacts/update_last_interaction`, { 
+      phone, 
+      date, 
+      conversationSid 
+    });
+  }
 }

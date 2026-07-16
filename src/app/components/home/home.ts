@@ -136,6 +136,10 @@ export class Home implements OnInit, OnDestroy {
 
     // 3. Update contact properties
     const contact = this.contacts[index];
+    const timestamp = dateCreated || new Date();
+    
+    // Push update to Airtable
+    this.contactService.updateLastInteraction(contact.phone, timestamp.toISOString()).subscribe();
     const isCurrentlyOpen = activeSid === conversationSid;
     
     const wasUnread = contact.hasUnread;
@@ -234,7 +238,6 @@ export class Home implements OnInit, OnDestroy {
       const lastReadIndex = conv?.lastReadMessageIndex;
       const lastAuthor = (conv?.lastMessage as any)?.author;
 
-      // Fix: Improved unread detection (handles null lastReadIndex and checks author)
       const hasUnread = 
         lastIndex !== undefined && 
         lastIndex !== null && 
@@ -246,9 +249,16 @@ export class Home implements OnInit, OnDestroy {
         if (!firstUnreadContact) firstUnreadContact = contactObj;
       }
 
+      // Check Twilio Conversation first, then Airtable Last_Interaction, then creation date
+      const lastActivity = 
+        conv?.lastMessage?.dateCreated || 
+        (contactObj.contact.fields.Last_Interaction ? new Date(contactObj.contact.fields.Last_Interaction) : null) || 
+        contactObj.contact.createdTime || 
+        null;
+
       return {
         ...contactObj,
-        lastActivity: conv?.lastMessage?.dateCreated || contactObj.contact.createdTime || null,
+        lastActivity: lastActivity,
         hasUnread: hasUnread,
       };
     });
@@ -305,7 +315,7 @@ export class Home implements OnInit, OnDestroy {
     this.errorMessage = null;
     this.isLoadingMessages = true;
     
-    // Fix: Set selectedContact immediately to prevent rendering previous contact data
+    // Set selectedContact immediately to prevent rendering previous contact data
     this.selectedContact = contact;
     contact.is_selected = true;
     contact.hasUnread = false;
@@ -347,6 +357,27 @@ export class Home implements OnInit, OnDestroy {
       } else if (conversationSid) {
         await this.twilioService.openConversation(conversationSid, contact.phone);
       }
+
+      // Extract latest message synchronously
+      const messages = this.twilioService.currentMessages;
+      if (messages && messages.length > 0) {
+        const latestMessage = messages[messages.length - 1];
+        const latestDate = latestMessage.dateCreated;
+        const currentDate = contact.lastActivity ? new Date(contact.lastActivity) : new Date(0);
+
+        if (latestDate.getTime() > currentDate.getTime()) {
+          contact.lastActivity = latestDate;
+          this.contactService.updateLastInteraction(
+            contact.phone, 
+            latestDate.toISOString(), 
+            contact.contact.conversation_sid
+          ).subscribe();
+
+          // Move contact to top and re-sort
+          this.moveContactToTop(contact.contact.conversation_sid);
+        }
+      }
+
     } catch (err) {
       if (selectionId !== this.lastSelectionId) return;
       console.error('Error selecting contact:', err);

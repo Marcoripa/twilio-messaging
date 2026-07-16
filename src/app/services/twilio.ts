@@ -30,6 +30,11 @@ export class TwilioService {
     return this.client?.user?.identity || '';
   }
 
+  get currentMessages(): ChatMessage[] {
+    return this.messagesSubject.value;
+  }
+
+
   private normalizeMessage(msg: any, source: 'conversation' | 'messages-api'): ChatMessage {
     const author = msg.author || msg.from;
     return {
@@ -97,6 +102,19 @@ export class TwilioService {
               reject(new Error('Twilio Client initialization failed'));
             });
           }
+        });
+
+        this.client.on('tokenAboutToExpire', async () => {
+          console.log('[TwilioService] Access token is about to expire. Refreshing...');
+          this.getAccessToken().subscribe({
+            next: async (res) => {
+              if (this.client) {
+                await this.client.updateToken(res.token);
+                console.log('[TwilioService] Access token updated successfully.');
+              }
+            },
+            error: (err) => console.error('[TwilioService] Failed to refresh token:', err)
+          });
         });
 
         this.client.on('connectionStateChanged', (state) => {
@@ -215,9 +233,22 @@ export class TwilioService {
     this.conversation = undefined; // Temporarily unset to avoid mixing messages until ready
 
     // 1. Get the conversation object
-    const conversation =
-      this.conversations.get(conversationSid) ||
-      await this.client.getConversationBySid(conversationSid);
+    let conversation;
+    try {
+      conversation = await this.client.getConversationBySid(conversationSid);
+    } catch (err) {
+      console.warn(`[TwilioService] Failed to fetch conversation ${conversationSid} directly:`, err);
+      // Fallback to cache if network fetch fails
+      conversation = this.conversations.get(conversationSid);
+    }
+
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationSid} could not be loaded.`);
+    }
+
+    // const conversation =
+    //   this.conversations.get(conversationSid) ||
+    //   await this.client.getConversationBySid(conversationSid);
 
     if (this.activeConversationSid !== conversationSid) return;
 

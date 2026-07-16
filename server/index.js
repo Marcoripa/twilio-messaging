@@ -158,6 +158,57 @@ async function startTwilioChat(recipientPhone) {
   }
 }
 
+/**
+ * Airtable Helper: Update last interaction timestamp
+ */
+async function updateAirtableLastInteraction(phoneOrSid, lastInteractionTime, conversationSid = null) {
+  console.log('UPDATING LAST INTERACTION:', phoneOrSid, lastInteractionTime, conversationSid);
+  if (!airtableBaseId || !airtableTableId || !airtableToken) return;
+
+  try {
+    const isSid = phoneOrSid.startsWith('CH');
+    if (isSid && !conversationSid) {
+      conversationSid = phoneOrSid; // If we're searching by SID, use it for the update
+    }
+    const formula = isSid 
+      ? `{Conversation_SID} = '${phoneOrSid}'`
+      : `{Phone} = '${formatPhone(phoneOrSid)}'`;
+      
+    const filter = encodeURIComponent(formula);
+    const searchRes = await fetch(
+      `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}?filterByFormula=${filter}`,
+      { headers: { Authorization: `Bearer ${airtableToken}` } }
+    );
+
+    if (!searchRes.ok) return;
+    const data = await searchRes.json();
+    if (data.records && data.records.length > 0) {
+      const recordId = data.records[0].id;
+      
+      const fields = {
+        'Last_Interaction': lastInteractionTime || new Date().toISOString()
+      };
+      
+      // If we got a conversation SID, save it so subsequent lookups work
+      if (conversationSid) {
+        fields['Conversation_SID'] = conversationSid;
+      }
+      
+      await fetch(`https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}/${recordId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${airtableToken}`
+        },
+        body: JSON.stringify({ fields })
+      });
+      console.log(`[Airtable] Updated record ${recordId} (Conversation_SID: ${conversationSid || 'no-change'})`);
+    }
+  } catch (err) {
+    console.error('[Airtable] Error updating Last_Interaction:', err);
+  }
+}
+
 // --- API ROUTES ---
 
 app.get('/api/token', (req, res) => {
@@ -205,14 +256,46 @@ app.post('/api/create_conversation', async (req, res) => {
     const conversationSid = await startTwilioChat(formattedPhone);
     
     // Update Airtable if a name was provided
+    console.log(`[API] Conversation SID: ${conversationSid} for phone: ${formattedPhone}, name: ${name || 'N/A'}`);
     if (name && conversationSid) {
       const nameParts = name.trim().split(' ');
       const firstName = nameParts[0] || '';
       const lastName = nameParts.slice(1).join(' ') || '';
 
-      console.log(`Saving new contact ${firstName} ${lastName}; Phone: ${formattedPhone}`);
+      // 2. Check if contact already exists in Airtable
+      const filter = encodeURIComponent(`{Phone} = '${formattedPhone}'`);
+      const searchRes = await fetch(
+        `https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}?filterByFormula=${filter}`,
+        { headers: { Authorization: `Bearer ${airtableToken}` } }
+      );
 
-      const response = await fetch(`https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}`, {
+      if (searchRes.ok) {
+        const searchData = await searchRes.json();
+        if (searchData.records && searchData.records.length > 0) {
+          // Contact exists! Update the existing record with Conversation_SID and Last_Interaction (PATCH)
+          const recordId = searchData.records[0].id;
+          console.log(`[Airtable] Contact already exists (ID: ${recordId}). Updating Conversation_SID...`);
+          
+          await fetch(`https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}/${recordId}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${airtableToken}`,
+            },
+            body: JSON.stringify({
+              fields: {
+                'Conversation_SID': conversationSid
+              }
+            })
+          });
+          
+          return res.json({ conversationSid });
+        }
+      }
+
+      // 3. Contact does not exist. Create new record (POST)
+      console.log(`[Airtable] Saving new contact ${firstName} ${lastName}; Phone: ${formattedPhone}`);
+      await fetch(`https://api.airtable.com/v0/${airtableBaseId}/${airtableTableId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -225,7 +308,8 @@ app.post('/api/create_conversation', async (req, res) => {
               'Last Name': lastName,
               'Phone': formattedPhone,
               'Conversation_SID': conversationSid,
-              'Name': name
+              'Name': name,
+              'Last_Interaction': new Date().toISOString()
             }
           }]
         })
@@ -234,7 +318,7 @@ app.post('/api/create_conversation', async (req, res) => {
 
     res.json({ conversationSid });
   } catch (err) {
-    console.error('[API] Failed to create conversation:', err);
+   console.error('[API] Failed to create/update conversation:', err);
     
     // Handle Twilio specific errors (e.g. invalid phone number)
     if (err.code === 21211 || err.code === 21608 || err.message.includes('not a valid phone number')) {
@@ -250,7 +334,11 @@ app.post('/api/send_sms', async (req, res) => {
   if (!conversationSid || !text) return res.status(400).json({ error: 'Missing parameters' });
 
   try {
-    await client.conversations.v1.conversations(conversationSid).messages.create({ body: text });
+    const message = await client.conversations.v1.conversations(conversationSid).messages.create({ body: text });
+    
+    // Update Airtable async
+    updateAirtableLastInteraction(conversationSid, message.dateCreated.toISOString());
+
     res.json({ success: true });
   } catch (err) {
     console.error('[API] Failed to send SMS:', err);
@@ -281,6 +369,18 @@ app.post('/api/voice', (req, res) => {
   const response = new VoiceResponse();
   response.dial({ callerId: twilioPhone }, to);
   res.type('text/xml').send(response.toString());
+});
+
+app.post('/api/contacts/update_last_interaction', async (req, res) => {
+  const { phone, date, conversationSid } = req.body;
+  if (!phone || !date) return res.status(400).json({ error: 'Missing parameters' });
+  
+  try {
+    await updateAirtableLastInteraction(phone, date, conversationSid);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/', (req, res) => {

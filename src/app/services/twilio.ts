@@ -1,6 +1,6 @@
 import { Injectable, inject, NgZone } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, BehaviorSubject } from 'rxjs';
+import { Observable, BehaviorSubject, firstValueFrom } from 'rxjs';
 import { environment } from '../../environment';
 import { Client, Conversation, Message } from '@twilio/conversations';
 import { ChatMessage } from '../shared/models/chatMessage';
@@ -262,15 +262,16 @@ export class TwilioService {
 
     // 3. Fetch historical messages from SMS API
     let apiMessages: any[] = [];
-    try {
-      const res = await fetch(`${environment.apiUrl}/messages?phone=${phoneNumber}`);
-      if (this.activeConversationSid !== conversationSid) return;
-      if (res.ok) {
-        apiMessages = await res.json();
-      }
-    } catch (err) {
-      console.warn('Failed to fetch messages API', err);
-    }
+        try {
+          apiMessages = await firstValueFrom(
+            this.http.get<any[]>(`${environment.apiUrl}/messages`, {
+              params: { phone: phoneNumber }
+            })
+          );
+        } catch (err) {
+          console.warn('Failed to fetch messages API', err);
+        }
+
 
     if (this.activeConversationSid !== conversationSid) return;
 

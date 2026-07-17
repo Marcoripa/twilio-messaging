@@ -13,7 +13,13 @@
     "build:electron": "ng build && electron-builder",
     "build:electron-mac": "ng build && electron-builder --mac --universal",
     "build:electron-linux": "ng build && electron-builder --linux",
-    "build:electron-win": "ng build && electron-builder --win --portable"
+    "build:electron-win": "ng build && electron-builder --win --portable",
+    "cap:init": "npx cap init twilio-messaging com.marco.twiliomessaging --web-dir=dist/twilio-messaging/browser",
+    "cap:add-ios": "npm install @capacitor/ios && npx cap add ios",
+    "cap:add-android": "npm install @capacitor/android && npx cap add android",
+    "cap:sync": "ng build && npx cap sync",
+    "cap:open-ios": "npx cap open ios",
+    "cap:open-android": "npx cap open android"
   },
   "prettier": {
     "printWidth": 100,

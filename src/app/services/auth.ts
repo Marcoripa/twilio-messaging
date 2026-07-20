@@ -16,7 +16,7 @@ export class AuthService {
   async login(email: string, pass: string) {
     try {
       await signInWithEmailAndPassword(this.auth, email, pass);
-      this.router.navigate(['/dashboard']); // Redirect after success
+      this.router.navigate(['/']); // Redirect after success
     } catch (error: any) {
       throw error.message;
     }

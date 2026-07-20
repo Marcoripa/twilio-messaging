@@ -160,77 +160,11 @@ Once completed, the CLI will output your Function URL (e.g., `https://api-api-81
 
 ---
 
-## 📱 Mobile App Wrapper (iOS & Android)
-
-You can wrap the Angular frontend into a native iOS and Android application using **Capacitor**.
-
-### 1. Initialize Capacitor
-Initialize Capacitor config in your project root:
+### 4. Deploy the PWA
 ```bash
-npm run cap:init
+ng build
 ```
 
-### 2. Add Mobile Platforms
-Add the platforms you want to build for:
 ```bash
-# Add iOS (iPhone/iPad) support
-npm run cap:add-ios
-
-# Add Android support
-npm run cap:add-android
+firebase deploy --only hosting
 ```
-
-### 3. Sync Angular Code to Mobile
-Build the Angular frontend for production and sync it to the native projects:
-```bash
-npm run cap:sync
-```
-
----
-
-## 🍏 Building & Installing onto iPhone (iOS)
-
-To run the app on an iPhone, you need a Mac with **Xcode** installed.
-
-### Method A: Install Directly via USB (Free Apple Developer Account)
-1. Plug your iPhone into your Mac using a USB cable.
-2. Open the project in Xcode:
-   ```bash
-   npm run cap:open-ios
-   ```
-3. In Xcode, select your project in the sidebar, go to the **Signing & Capabilities** tab, and select your Personal Team under "Team".
-4. Select your connected iPhone from the scheme/device dropdown at the top.
-5. Click the **Play button (Build and Run)**. Xcode will compile the app and install it onto your iPhone.
-6. On your iPhone, go to **Settings > General > VPN & Device Management**, find your developer profile, and tap **Trust**.
-
-### Method B: Build IPA for Wireless Distribution (Ad-Hoc / Diawi)
-1. Open the project in Xcode (`npm run cap:open-ios`).
-2. Go to **Product > Archive**.
-3. Once the archive completes, click **Distribute App** in the Organizer.
-4. Select **Ad Hoc** (requires registering your iPhone's UDID in Apple Developer Console) or **App Store Connect (TestFlight)**.
-5. Export the `.ipa` file.
-6. Upload the `.ipa` to [Diawi](https://www.diawi.com/) and scan the QR code with your iPhone to install it over the air.
-
----
-
-## 🤖 Building & Installing APK (Android)
-
-To build and run on Android, you need **Android Studio** installed.
-
-### 1. Open the Project in Android Studio
-```bash
-npm run cap:open-android
-```
-
-### 2. Build the Debug/Release APK
-* **Debug APK (Fastest)**: In Android Studio, go to **Build > Build Bundle(s) / APK(s) > Build APK(s)**. The APK will be generated under `android/app/build/outputs/apk/debug/app-debug.apk`.
-* **Release APK**: Go to **Build > Generate Signed Bundle / APK**, create a keystore key, and build a signed release APK.
-
-### 3. Install on Mobile Phone
-* **Via USB**: Enable **Developer Options** and **USB Debugging** on your Android phone, plug it into your computer, and click the **Run** button in Android Studio.
-* **Via Direct Download**: Transfer the `.apk` file to your phone (via Google Drive, email, or USB), open the file manager on your phone, and tap the APK to install it (enable "Install from Unknown Sources" if prompted).
-
----
-
-## 📄 License
-Private Project - All rights reserved.

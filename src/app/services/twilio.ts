@@ -104,21 +104,50 @@ export class TwilioService {
           }
         });
 
-        this.client.on('tokenAboutToExpire', async () => {
-          console.log('[TwilioService] Access token is about to expire. Refreshing...');
-          this.getAccessToken().subscribe({
-            next: async (res) => {
-              if (this.client) {
-                await this.client.updateToken(res.token);
-                console.log('[TwilioService] Access token updated successfully.');
-              }
-            },
-            error: (err) => console.error('[TwilioService] Failed to refresh token:', err)
+        this.client.on('tokenAboutToExpire', () => {
+          this.zone.run(() => {
+            console.log('[TwilioService] Access token is about to expire. Refreshing...');
+            this.getAccessToken().subscribe({
+              next: async (res) => {
+                try {
+                  if (this.client) {
+                    await this.client.updateToken(res.token);
+                    console.log('[TwilioService] Access token updated successfully.');
+                  }
+                } catch (err) {
+                  console.error('[TwilioService] Error updating token:', err);
+                }
+              },
+              error: (err) => console.error('[TwilioService] Failed to fetch token:', err)
+            });
+          });
+        });
+
+        this.client.on('tokenExpired', () => {
+          this.zone.run(() => {
+            console.warn('[TwilioService] Token EXPIRED. Re-initializing client...');
+            this.getAccessToken().subscribe({
+              next: async (res) => {
+                try {
+                  await this.initialize(res.token);
+                  console.log('[TwilioService] Client re-initialized after token expiration.');
+                } catch (err) {
+                  console.error('[TwilioService] Failed to re-initialize after expiration:', err);
+                }
+              },
+              error: (err) => console.error('[TwilioService] Failed to fetch token on expiration:', err)
+            });
           });
         });
 
         this.client.on('connectionStateChanged', (state) => {
-          console.log(`[TwilioService] Connection state: ${state}`);
+          this.zone.run(() => {
+            console.log(`[TwilioService] Connection state: ${state}`);
+            if (state === 'denied') {
+              console.warn('[TwilioService] Connection denied. Re-initializing with new token...');
+              this.getAccessToken().subscribe(res => this.initialize(res.token));
+            }
+          });
         });
 
         // Listen for new messages globally

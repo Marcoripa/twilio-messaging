@@ -71,7 +71,8 @@ export class Home implements OnInit, OnDestroy {
       this.twilioService.messageEvents$
         .pipe(takeUntil(this.destroy$))
         .subscribe(async (event) => {
-          if (!event) return;
+          // Ignore metadata updates that do not have a valid message author
+          if (!event || event.author === null) return;
           console.log(`[Home] Received messageEvents notification for ${event.sid} by ${event.author}`);
           await this.updateContactAndMoveToTop(event.sid, event.author, event.dateCreated);
         });

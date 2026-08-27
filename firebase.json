@@ -14,7 +14,7 @@
     }
   ],
   "hosting": {
-    "source": ".",
+    "public": "dist/twilio-messaging/browser",
     "ignore": [
       "firebase.json",
       "**/.*",

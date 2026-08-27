@@ -21,57 +21,123 @@
           class="w-full bg-transparent outline-none text-gray-800"
         />
 
-        <button
-          (click)="handleNewTextModal(true)"
-          class="cursor-pointer w-6 h-6 flex items-center justify-center rounded-full bg-blue-500 hover:bg-blue-600 text-white text-2xl shadow-md hover:shadow-lg transition-all duration-200"
-          title="New Text"
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            class="h-6 w-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
+        <div class="flex items-center gap-2 ml-2">
+          <button
+            (click)="refreshContacts()"
+            class="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 hover:bg-gray-300 text-gray-600 transition-all duration-200"
+            [class.animate-spin]="isRefreshing"
+            title="Refresh Contacts"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-        </button>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+          </button>
+
+          <button
+            (click)="handleNewTextModal(true)"
+            class="cursor-pointer w-8 h-8 flex items-center justify-center rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-md hover:shadow-lg transition-all duration-200"
+            title="New Text"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 
     <!-- Contact List -->
     <div class="flex-1 overflow-y-auto">
-      <div
-        *ngFor="let contact of filteredContacts; trackBy: trackByPhone"
-        class="flex items-center p-3 cursor-pointer hover:bg-gray-100"
-        [ngClass]="{ 'bg-blue-100': contact.is_selected }"
-        (click)="onContactSelect(contact)"
-        [title]="getContactLabel(contact)"
-      >
-        <img
-          [src]="
-            'https://ui-avatars.com/api/?name=' + (contact.contact?.fields?.Name ?? 'New Contact')
-          "
-          class="w-12 h-12 rounded-full object-cover mr-3"
-        />
-        <div class="flex-1 overflow-hidden">
-          <div class="flex justify-between items-start">
-            <div class="font-medium text-gray-800 truncate">
-              {{ getContactLabel(contact) }}
-            </div>
-            <div class="text-xs text-gray-500 ml-2 flex-shrink-0">
-              <span>{{ calculateTimeDifference(contact) }}</span>
-            </div>
+      <ng-container *ngIf="filteredContacts && filteredContacts.length > 0; else isLoading">
+        <div
+          *ngFor="let contact of filteredContacts; trackBy: trackByPhone"
+          class="flex items-center p-3 cursor-pointer transition-all duration-200 border-l-4"
+          [class.bg-white]="contact.hasUnread"
+          [class.shadow-md]="contact.hasUnread"
+          [class.z-10]="contact.hasUnread"
+          [class.my-1]="contact.hasUnread"
+          [class.rounded-r-lg]="contact.hasUnread"
+          [class.border-blue-600]="contact.hasUnread"
+          [class.border-transparent]="!contact.hasUnread"
+          [class.hover:bg-gray-100]="!contact.hasUnread"
+          [ngClass]="{ 'bg-blue-50 border-blue-400': contact.is_selected }"
+          (click)="onContactSelect(contact)"
+          [title]="getContactLabel(contact)"
+        >
+          <div class="relative">
+            <img
+              [src]="
+                'https://ui-avatars.com/api/?name=' + contact.contact.fields.Name
+              "
+              class="w-12 h-12 rounded-full object-cover mr-3"
+            />
+            <span
+              *ngIf="contact.hasUnread"
+              class="absolute top-0 right-2 block h-3 w-3 rounded-full ring-2 ring-white bg-blue-600"
+            >
+            </span>
           </div>
-          <p class="text-sm text-gray-500 truncate">{{ contact.phone }}</p>
-          <p class="text-sm text-gray-600 truncate">{{ lastMessageBody(contact) }}</p>
+
+          <div class="flex-1 overflow-hidden">
+            <div class="flex justify-between items-start">
+              <div
+                class="font-medium truncate"
+                [class.text-blue-900]="contact.hasUnread"
+                [class.text-gray-800]="!contact.hasUnread"
+              >
+                <strong [style.font-weight]="contact.hasUnread ? '800' : '500'">
+                  {{ getContactLabel(contact) }}
+                </strong>
+              </div>
+              <div
+                class="text-xs ml-2 flex-shrink-0"
+                [class.text-blue-600]="contact.hasUnread"
+                [class.font-bold]="contact.hasUnread"
+                [class.text-gray-500]="!contact.hasUnread"
+                *ngIf="contact.lastActivity"
+              >
+                {{ calculateTimeDifference(contact) }}
+              </div>
+            </div>
+            <p
+              class="text-sm truncate"
+              [class.text-gray-700]="contact.hasUnread"
+              [class.font-medium]="contact.hasUnread"
+              [class.text-gray-500]="!contact.hasUnread"
+            >
+              {{ contact.phone }}
+            </p>
+          </div>
         </div>
-      </div>
+      </ng-container>
+      <!-- Loader -->
+      <ng-template #isLoading>
+        <div class="flex justify-center items-center h-full">
+          <span class="text-gray-500 animate-pulse">Loading contacts...</span>
+        </div>
+      </ng-template>
     </div>
   </aside>
 
@@ -124,24 +190,71 @@
 
         <!-- Messages -->
         <div class="flex-1 min-h-0 p-4 overflow-y-auto space-y-3 flex flex-col messages">
-          @for (msg of selectedContact.messages; track msg) {
-            <div
-              [ngClass]="{
-                'self-end bg-green-200 text-black rounded-tr-none': msg.from === twilioPhone,
-                'self-start bg-white text-gray-800 rounded-tl-none': msg.from !== twilioPhone,
-              }"
-              class="max-w-xs rounded-xl px-4 py-2 break-words"
-            >
-              <div class="text-sm">{{ msg.body }}</div>
-              <div class="text-xs text-gray-500 mt-1 text-right">
-                {{ msg.date_created.slice(0, 22) || '' }}
+          <div class="flex flex-col gap-2 h-full">
+            <ng-container *ngIf="!isLoadingMessages; else loadingChat">
+              <div class="flex flex-col gap-2 h-full" *ngIf="messages$ | async as messages">
+                <ng-container *ngIf="messages.length > 0; else noMessages">
+                  <div
+                    *ngFor="let msg of messages"
+                    class="flex"
+                    [ngClass]="{
+                      'justify-end': msg.author === 'system',
+                      'justify-start': msg.author !== 'system',
+                    }"
+                  >
+                    <div
+                      class="max-w-xs rounded-xl px-4 py-2 break-words"
+                      [ngClass]="{
+                        'bg-green-200 text-black rounded-tr-none': msg.author === 'system',
+                        'bg-white text-gray-800 rounded-tl-none': msg.author !== 'system',
+                      }"
+                    >
+                      <div class="text-sm">{{ msg.body }}</div>
+
+                      <div class="text-xs text-gray-500 mt-1 text-right">
+                        <span *ngIf="!isToday(msg.dateCreated)">
+                          {{ msg.dateCreated | date: 'MMM d' }}
+                        </span>
+                        {{ msg.dateCreated | date: 'shortTime' }}
+                      </div>
+                    </div>
+                  </div>
+                </ng-container>
+
+                <ng-template #noMessages>
+                  <div class="flex-1 flex flex-col items-center justify-center text-gray-400 space-y-2">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      class="h-12 w-12 opacity-20"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                      />
+                    </svg>
+                    <p class="text-lg font-medium">No messages yet</p>
+                    <p class="text-sm">Start the conversation by sending a text below.</p>
+                  </div>
+                </ng-template>
               </div>
-            </div>
-          }
+            </ng-container>
+
+            <ng-template #loadingChat>
+              <div class="flex-1 flex flex-col items-center justify-center text-gray-500 space-y-3">
+                <div class="animate-spin rounded-full h-10 w-10 border-4 border-blue-500 border-t-transparent"></div>
+                <p class="text-lg font-medium animate-pulse">Loading conversation...</p>
+              </div>
+            </ng-template>
+          </div>
         </div>
 
         <!-- Input -->
-        <div class="p-4 border-t border-gray-200  flex items-center gap-2 flex-shrink-0">
+        <div class="p-4 border-t border-gray-200 flex items-center gap-2 flex-shrink-0">
           <input
             type="text"
             placeholder="Type a message"
@@ -172,35 +285,28 @@
     <div class="bg-white rounded-lg p-6 w-96 mx-2">
       <h2 class="text-xl font-semibold mb-4 text-center">Who are you reaching out today?</h2>
 
-      <div class="flex items-center mb-4 justify-center">
-        <span class="mr-3 text-gray-700">Just send text</span>
-        <label class="relative inline-flex items-center cursor-pointer">
-          <input type="checkbox" class="sr-only peer" #save />
-          <div
-            class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-blue-500 rounded-full peer peer-checked:bg-blue-500 transition-all duration-200"
-          ></div>
-          <div
-            class="absolute left-1 top-1 w-4 h-4 bg-white rounded-full shadow-md transform transition-all duration-200 peer-checked:translate-x-5"
-          ></div>
-        </label>
-        <span class="ml-3 text-gray-700">Save contact</span>
+      <div *ngIf="errorMessage" class="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
+        {{ errorMessage }}
       </div>
 
-      <input type="text" placeholder="Contact name" #name class="w-full mb-3 p-2 border rounded" />
-      <input type="text" placeholder="Phone" #phone class="w-full mb-3 p-2 border rounded" />
+      <input type="text" placeholder="Contact name" #name [disabled]="isCreatingContact" class="w-full mb-3 p-2 border rounded" />
+      <input type="text" placeholder="Phone" #phone [disabled]="isCreatingContact" class="w-full mb-3 p-2 border rounded" />
 
       <div class="flex justify-end space-x-2">
         <button
           (click)="handleNewTextModal(false)"
-          class="cursor-pointer px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
+          [disabled]="isCreatingContact"
+          class="cursor-pointer px-4 py-2 bg-gray-300 rounded hover:bg-gray-400 disabled:opacity-50"
         >
           Never mind
         </button>
         <button
-          (click)="goToChat({ name: name.value, phone: phone.value, save: save.checked })"
-          class="cursor-pointer px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+          (click)="goToChat({ name: name.value, phone: phone.value})"
+          [disabled]="isCreatingContact"
+          class="cursor-pointer px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2"
         >
-          Let's chat
+          <span *ngIf="isCreatingContact" class="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+          {{ isCreatingContact ? 'Initializing...' : "Let's chat" }}
         </button>
       </div>
     </div>

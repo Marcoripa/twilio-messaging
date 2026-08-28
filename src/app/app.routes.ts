@@ -10,5 +10,5 @@ export const routes: Routes = [
     component: Home, 
     canActivate: [authGuard]
   },
-  { path: '', redirectTo: '', pathMatch: 'full' }
+  { path: '**', redirectTo: '' }
 ];

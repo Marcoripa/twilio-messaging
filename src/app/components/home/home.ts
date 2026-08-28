@@ -54,18 +54,19 @@ export class Home implements OnInit, OnDestroy {
         await Notification.requestPermission();
       }
 
-      // 1. Upload contacts from server and wait for it
+      // 1. Upload pre-sorted contacts from server and render immediately
       const serverContacts = await firstValueFrom(this.contactService.getAll());
       this.contacts = [...serverContacts];
       this.filteredContacts = [...serverContacts];
-      console.log('Contacts loaded:', this.contacts.length);
+      this.cd.detectChanges();
+      console.log('Contacts loaded and rendered immediately:', this.contacts.length);
 
-      // 2. Get the token and initialize Twilio
+      // 2. Get the token and initialize Twilio in background
       const res = await firstValueFrom(this.twilioService.getAccessToken());
       await this.twilioService.initialize(res.token);
 
-      // 3. Sort contacts based on activity
-      await this.sortContactsByConversationActivity();
+      // 3. Sync unread counts and conversation badges non-blockingly
+      this.syncUnreadAndBadges();
 
       // 4. Listen for new messages
       this.twilioService.messageEvents$
@@ -108,13 +109,65 @@ export class Home implements OnInit, OnDestroy {
     try {
       const serverContacts = await firstValueFrom(this.contactService.getAll());
       this.contacts = [...serverContacts];
-      await this.sortContactsByConversationActivity();
+      this.filteredContacts = [...serverContacts];
+      this.cd.detectChanges();
       console.log('Contacts refreshed:', this.contacts.length);
+      this.syncUnreadAndBadges();
     } catch (err) {
       console.error('Refresh failed:', err);
     } finally {
       this.isRefreshing = false;
       this.cd.detectChanges();
+    }
+  }
+
+  async syncUnreadAndBadges() {
+    try {
+      const conversations = await this.twilioService.getSubscribedConversations();
+      const myIdentity = this.twilioService.getIdentity();
+
+      const conversationMap = new Map(conversations.map((c) => [c.sid, c]));
+      let unreadCount = 0;
+      let firstUnreadContact: Contact | null = null;
+
+      this.contacts.forEach((contactObj) => {
+        const conv = conversationMap.get(contactObj.contact.conversation_sid);
+        if (!conv) return;
+
+        const lastIndex = conv?.lastMessage?.index;
+        const lastReadIndex = conv?.lastReadMessageIndex;
+        const lastAuthor = (conv?.lastMessage as any)?.author;
+
+        const hasUnread = 
+          lastIndex !== undefined && 
+          lastIndex !== null && 
+          lastAuthor !== myIdentity &&
+          (lastReadIndex === undefined || lastReadIndex === null || lastIndex > lastReadIndex);
+
+        if (hasUnread) {
+          contactObj.hasUnread = true;
+          unreadCount++;
+          if (!firstUnreadContact) firstUnreadContact = contactObj;
+        }
+      });
+
+      // Notify about missed messages on startup
+      if (unreadCount > 0 && firstUnreadContact) {
+        const unreadContact = firstUnreadContact as Contact;
+        const summaryContact: Contact = unreadCount === 1 ? unreadContact : {
+          ...unreadContact,
+          contact: {
+            ...unreadContact.contact,
+            fields: { ...unreadContact.contact.fields, Name: `${unreadCount} contacts` }
+          }
+        };
+        this.showNativeNotification(summaryContact, true);
+      }
+
+      this.filteredContacts = [...this.contacts];
+      this.cd.detectChanges();
+    } catch (err) {
+      console.warn('[Home] Error syncing unread badges in background:', err);
     }
   }
 
@@ -221,71 +274,6 @@ export class Home implements OnInit, OnDestroy {
       });
     }
 
-    this.cd.detectChanges();
-  }
-
-  async sortContactsByConversationActivity() {
-    const conversations = await this.twilioService.getSubscribedConversations();
-    const myIdentity = this.twilioService.getIdentity();
-
-    const conversationMap = new Map(conversations.map((c) => [c.sid, c]));
-    let unreadCount = 0;
-    let firstUnreadContact: Contact | null = null;
-
-    this.contacts = this.contacts.map((contactObj) => {
-      const conv = conversationMap.get(contactObj.contact.conversation_sid);
-
-      const lastIndex = conv?.lastMessage?.index;
-      const lastReadIndex = conv?.lastReadMessageIndex;
-      const lastAuthor = (conv?.lastMessage as any)?.author;
-
-      const hasUnread = 
-        lastIndex !== undefined && 
-        lastIndex !== null && 
-        lastAuthor !== myIdentity &&
-        (lastReadIndex === undefined || lastReadIndex === null || lastIndex > lastReadIndex);
-
-      if (hasUnread) {
-        unreadCount++;
-        if (!firstUnreadContact) firstUnreadContact = contactObj;
-      }
-
-      // Check Twilio Conversation first, then Airtable Last_Interaction, then creation date
-      const lastActivity = 
-        conv?.lastMessage?.dateCreated || 
-        (contactObj.contact.fields.Last_Interaction ? new Date(contactObj.contact.fields.Last_Interaction) : null) || 
-        contactObj.contact.createdTime || 
-        null;
-
-      return {
-        ...contactObj,
-        lastActivity: lastActivity,
-        hasUnread: hasUnread,
-      };
-    });
-
-    // Notify about missed messages on startup
-    if (unreadCount > 0 && firstUnreadContact) {
-      const unreadContact = firstUnreadContact as Contact;
-      const summaryContact: Contact = unreadCount === 1 ? unreadContact : {
-        ...unreadContact,
-        contact: {
-          ...unreadContact.contact,
-          fields: { ...unreadContact.contact.fields, Name: `${unreadCount} contacts` }
-        }
-      };
-      this.showNativeNotification(summaryContact, true);
-    }
-
-
-    // 2. Ordiniamo i contatti usando la nuova proprietà lastActivity
-    this.contacts.sort((a, b) => {
-      const aTime = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
-      const bTime = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
-      return bTime - aTime;
-    });
-
-    this.filteredContacts = [...this.contacts];
     this.cd.detectChanges();
   }
 
@@ -481,13 +469,14 @@ export class Home implements OnInit, OnDestroy {
           // Refresh contacts to include the new one
           this.contactService.getAll().subscribe(async updatedContacts => {
             this.contacts = [...updatedContacts];
-            await this.sortContactsByConversationActivity();
+            this.filteredContacts = [...updatedContacts];
             const newContact = this.contacts.find(c => c.phone === phone);
             if (newContact) {
               this.onContactSelect(newContact);
             }
             this.handleNewTextModal(false);
             this.cd.detectChanges();
+            this.syncUnreadAndBadges();
           });
         },
         error: (err) => {

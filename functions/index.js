@@ -83,14 +83,15 @@ function formatPhone(phone) {
 }
 
 /**
- * Airtable Helper: Fetch all contacts (handles pagination)
+ * Airtable Helper: Fetch contacts pre-sorted by Last_Interaction descending
  */
 async function fetchAirtableContacts() {
   let allRecords = [];
   let offset = '';
+  const sortQuery = 'sort[0][field]=Last_Interaction&sort[0][direction]=desc';
 
   do {
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID.value()}/${AIRTABLE_TABLE_ID.value()}${offset ? `?offset=${offset}` : ''}`;
+    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID.value()}/${AIRTABLE_TABLE_ID.value()}?${sortQuery}${offset ? `&offset=${offset}` : ''}`;
     const res = await fetch(url, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN.value()}` },
     });
@@ -105,24 +106,34 @@ async function fetchAirtableContacts() {
     offset = data.offset;
   } while (offset);
 
-  console.log(`Totally fetched ${allRecords.length} contacts from Airtable`);
+  console.log(`Totally fetched ${allRecords.length} contacts from Airtable (sorted by Last_Interaction desc)`);
 
-  return Object.fromEntries(
-    allRecords
-      .filter(r => r.fields?.Phone)
-      .map(r => {
-        const formatted = formatPhone(r.fields.Phone);
-        return [
-          formatted,
-          {
-            id: r.id,
-            conversation_sid: r.fields['Conversation_SID'] ?? '',
-            createdTime: r.createdTime,
-            fields: { ...r.fields, Phone: formatted },
-          }
-        ];
-      })
-  );
+  const seenPhones = new Set();
+  const contacts = [];
+
+  for (const r of allRecords) {
+    if (!r.fields?.Phone) continue;
+    const formatted = formatPhone(r.fields.Phone);
+    if (seenPhones.has(formatted)) continue;
+    seenPhones.add(formatted);
+
+    const lastInteraction = r.fields['Last_Interaction'];
+    contacts.push({
+      phone: formatted,
+      contact: {
+        id: r.id,
+        conversation_sid: r.fields['Conversation_SID'] ?? '',
+        createdTime: r.createdTime,
+        fields: { ...r.fields, Phone: formatted },
+      },
+      lastActivity: lastInteraction ? new Date(lastInteraction) : (r.createdTime ? new Date(r.createdTime) : null),
+      is_registered: true,
+      is_selected: false,
+      hasUnread: false
+    });
+  }
+
+  return contacts;
 }
 
 /**
@@ -236,13 +247,7 @@ async function startTwilioChat(recipientPhone) {
 
 app.get('/api/contacts', validateToken, async (req, res) => {
   try {
-    const airtableContacts = await fetchAirtableContacts();
-    const contacts = Object.entries(airtableContacts).map(([phone, contact]) => ({
-      phone,
-      contact,
-      is_registered: true,
-      is_selected: false
-    }));
+    const contacts = await fetchAirtableContacts();
     res.json(contacts);
   } catch (err) {
     console.error('[API] Failed to fetch contacts:', err.message);

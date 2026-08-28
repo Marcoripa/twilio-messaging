@@ -71,7 +71,7 @@ export const environment = {
 npm start
 ```
 
-### Start Express Backend (Separate process for dev)
+### Start Express Backend
 ```bash
 node server/index.js
 ```
